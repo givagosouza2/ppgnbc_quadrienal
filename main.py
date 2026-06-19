@@ -148,16 +148,52 @@ def _retryable(status): return status in (429, 500, 503)
 
 @st.cache_resource
 def spreadsheet():
+    # Debug: mostrar informações da conexão
+    st.write("🔍 Debug - Conectando ao Google Sheets...")
+    st.write(f"📋 Spreadsheet ID: {SPREADSHEET_ID}")
+    st.write(f" Service Account: {st.secrets['GSERVICE'].get('client_email', 'N/A')}")
+    
     last_err = None
     for attempt in range(4):
-        try: return gclient().open_by_key(SPREADSHEET_ID)
+        try:
+            st.write(f"🔄 Tentativa {attempt + 1} de 4...")
+            sh = gclient().open_by_key(SPREADSHEET_ID)
+            st.write("✅ Conexão estabelecida com sucesso!")
+            return sh
         except APIError as e:
             last_err = e
-            if _retryable(_extract_api_error_info(e)[0]):
-                time.sleep(1.5 * (attempt + 1)); continue
+            status, text = _extract_api_error_info(e)
+            st.error(f"❌ APIError na tentativa {attempt + 1}:")
+            st.write(f"Status HTTP: {status}")
+            st.write(f"Resposta: {text}")
+            if _retryable(status):
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            break
+        except SpreadsheetNotFound:
+            st.error(f"❌ Planilha com ID '{SPREADSHEET_ID}' não encontrada!")
+            st.info("Verifique se:")
+            st.write("1. O ID está correto no secrets.toml")
+            st.write("2. A planilha não foi movida para a lixeira")
+            st.write("3. A service account tem acesso à planilha")
             raise
-        except SpreadsheetNotFound: raise
-    raise last_err
+        except PermissionError as e:
+            st.error(f"❌ PermissionError na tentativa {attempt + 1}:")
+            st.write("A service account não tem permissão para acessar esta planilha.")
+            st.info("Soluções:")
+            st.write("1. Verifique se as APIs 'Google Sheets' e 'Google Drive' estão habilitadas no Google Cloud")
+            st.write("2. Confirme que compartilhou a planilha com o email da service account como Editor")
+            st.write("3. Tente criar uma nova planilha e compartilhar com a service account")
+            raise
+        except Exception as e:
+            st.error(f" Erro inesperado na tentativa {attempt + 1}:")
+            st.write(f"Tipo: {type(e).__name__}")
+            st.write(f"Mensagem: {str(e)}")
+            raise
+    
+    if last_err:
+        st.error("❌ Todas as tentativas falharam.")
+        raise last_err
 
 def clear_cache(): st.cache_data.clear()
 
@@ -346,9 +382,9 @@ if not st.session_state.logged:
     tab_login, tab_cad = st.tabs(["🔑 Login", "📝 Cadastro"])
     with tab_login:
         st.markdown("<div class='block-card'>", unsafe_allow_html=True)
-        u = st.text_input("Usuário")
-        p = st.text_input("Senha", type="password")
-        if st.button("Entrar", use_container_width=True):
+        u = st.text_input("Usuário", key="login_user")
+        p = st.text_input("Senha", type="password", key="login_pass")
+        if st.button("Entrar", use_container_width=True, key="btn_login"):
             ok, res = authenticate(u, p)
             if ok:
                 st.session_state.logged = True
@@ -359,20 +395,20 @@ if not st.session_state.logged:
 
     with tab_cad:
         st.markdown("<div class='block-card'>", unsafe_allow_html=True)
-        name = st.text_input("Nome completo")
-        username = st.text_input("Username (login)")
-        email = st.text_input("Email")
-        role = st.selectbox("Perfil", ["docente", "discente"])
+        name = st.text_input("Nome completo", key="cad_name")
+        username = st.text_input("Username (login)", key="cad_username")
+        email = st.text_input("Email", key="cad_email")
+        role = st.selectbox("Perfil", ["docente", "discente"], key="cad_role")
         orientador = ""
         if role == "discente":
             docentes = listar_docentes()
             if docentes:
-                orientador = st.selectbox("Orientador (no PPG)", docentes)
+                orientador = st.selectbox("Orientador (no PPG)", docentes, key="cad_orientador_sel")
             else:
-                orientador = st.text_input("Nome do orientador (nenhum docente cadastrado ainda)")
-        pw1 = st.text_input("Senha", type="password")
-        pw2 = st.text_input("Confirmar senha", type="password")
-        if st.button("Solicitar cadastro", use_container_width=True):
+                orientador = st.text_input("Nome do orientador (nenhum docente cadastrado ainda)", key="cad_orientador_txt")
+        pw1 = st.text_input("Senha", type="password", key="cad_pw1")
+        pw2 = st.text_input("Confirmar senha", type="password", key="cad_pw2")
+        if st.button("Solicitar cadastro", use_container_width=True, key="btn_cadastro"):
             if not all([name, username, email]):
                 st.error("Preencha nome, username e email.")
             elif len(pw1) < 6:
@@ -423,22 +459,21 @@ if role_of(user) == "admin":
             cols = [c for c in ["id","name","username","email","role","orientador","created_at"]
                     if c in pend.columns]
             st.dataframe(pend[cols], use_container_width=True)
-            sel_id = st.selectbox("Selecione um cadastro", pend["id"].tolist())
-            reason = st.text_input("Motivo (opcional)")
+            sel_id = st.selectbox("Selecione um cadastro", pend["id"].tolist(), key="admin_sel_cad")
+            reason = st.text_input("Motivo (opcional)", key="admin_reason_cad")
             cA, cR = st.columns(2)
             with cA:
-                if st.button("✅ Aprovar", use_container_width=True):
+                if st.button("✅ Aprovar", use_container_width=True, key="btn_aprovar_cad"):
                     ok, msg = cadastro_review(sel_id, "Aprovar", user["username"], reason)
                     (st.success if ok else st.error)(msg); st.rerun()
             with cR:
-                if st.button("❌ Rejeitar", use_container_width=True):
+                if st.button("❌ Rejeitar", use_container_width=True, key="btn_rejeitar_cad"):
                     ok, msg = cadastro_review(sel_id, "Rejeitar", user["username"], reason)
                     (st.success if ok else st.error)(msg); st.rerun()
 
     with t3:
         if df_prod.empty: st.info("Sem produções cadastradas.")
         else:
-            # Enriquece com participações
             view = df_prod.copy()
             st.dataframe(view, use_container_width=True)
             st.caption("Total de produções: " + str(len(view)))
@@ -457,7 +492,6 @@ if role_of(user) == "admin":
                     st.write("— Nenhuma produção registrada —")
                 else:
                     st.write(f"Total: {len(subset)}")
-                    # Contagem de participações por tipo
                     if not df_part.empty:
                         ids_ano = subset["id"].tolist()
                         parts_ano = df_part[df_part["producao_id"].isin(ids_ano)]
@@ -491,7 +525,6 @@ if role_of(user) == "docente":
                     st.write(f"**Veículo:** {row['veiculo']}")
                     st.write(f"**Autores:** {row['autores']}")
                     st.write(f"**DOI:** {row['doi'] or '—'}")
-                    # Participações
                     parts = df_part[df_part["producao_id"] == row["id"]] if not df_part.empty else pd.DataFrame()
                     if not parts.empty:
                         st.write("**Participações registradas:**")
@@ -507,13 +540,13 @@ if role_of(user) == "docente":
     with st.form("form_prod"):
         c1, c2 = st.columns(2)
         with c1:
-            titulo = st.text_input("Título da produção")
-            tipo   = st.selectbox("Tipo", TIPOS_PRODUCAO)
-            ano    = st.selectbox("Ano", ANOS)
+            titulo = st.text_input("Título da produção", key="prod_titulo")
+            tipo   = st.selectbox("Tipo", TIPOS_PRODUCAO, key="prod_tipo")
+            ano    = st.selectbox("Ano", ANOS, key="prod_ano")
         with c2:
-            veiculo = st.text_input("Veículo/Periódico/Evento")
-            autores = st.text_input("Autores (separados por vírgula)")
-            doi     = st.text_input("DOI / Link (opcional)")
+            veiculo = st.text_input("Veículo/Periódico/Evento", key="prod_veiculo")
+            autores = st.text_input("Autores (separados por vírgula)", key="prod_autores")
+            doi     = st.text_input("DOI / Link (opcional)", key="prod_doi")
         submitted = st.form_submit_button("Salvar produção", use_container_width=True)
         if submitted:
             if not titulo.strip():
@@ -524,23 +557,22 @@ if role_of(user) == "docente":
                 st.session_state["last_prod_id"] = pid
                 st.rerun()
 
-    # Formulário de participações para a última produção cadastrada
     last_pid = st.session_state.get("last_prod_id")
     if last_pid:
         st.markdown("---")
         st.subheader(f"👥 Participações na produção selecionada")
         with st.form("form_part"):
-            tipo_p = st.selectbox("Tipo de participação", TIPOS_PARTICIPACAO)
-            nome_p = st.text_input("Nome do participante")
-            vinc   = st.text_input("Vínculo/instituição (opcional)")
-            if st.form_submit_button("Adicionar participação", use_container_width=True):
+            tipo_p = st.selectbox("Tipo de participação", TIPOS_PARTICIPACAO, key="part_tipo")
+            nome_p = st.text_input("Nome do participante", key="part_nome")
+            vinc   = st.text_input("Vínculo/instituição (opcional)", key="part_vinc")
+            if st.form_submit_button("Adicionar participação", use_container_width=True, key="btn_add_part"):
                 if not nome_p.strip():
                     st.error("Informe o nome.")
                 else:
                     participacao_submit(last_pid, tipo_p, nome_p, vinc)
                     st.success("Participação adicionada!")
                     st.rerun()
-        if st.button("Finalizar (limpar produção atual)"):
+        if st.button("Finalizar (limpar produção atual)", key="btn_finalizar_prod"):
             st.session_state.pop("last_prod_id", None)
             st.rerun()
 
@@ -556,7 +588,6 @@ if role_of(user) == "discente":
     df_vinc = read_df(SHEET_VINC)
     df_part = read_df(SHEET_PART)
 
-    # Produções do orientador
     orientador_username = ""
     df_users = read_df(SHEET_USERS)
     if not df_users.empty and orientador_nome:
@@ -570,7 +601,6 @@ if role_of(user) == "discente":
             st.info("Seu orientador ainda não cadastrou produções.")
         else:
             st.markdown("### 📚 Produções do orientador")
-            # Minhas participações já registradas
             meus_vinc = df_vinc[df_vinc["discente_username"] == user["username"]] if not df_vinc.empty else pd.DataFrame()
             ja_participei = set() if meus_vinc.empty else set(meus_vinc["producao_id"].tolist())
 
@@ -597,7 +627,6 @@ if role_of(user) == "discente":
         if mine.empty:
             st.info("Você ainda não registrou participações.")
         else:
-            # Enriquece com título da produção
             linhas = []
             for _, v in mine.iterrows():
                 prod = df_prod[df_prod["id"] == v["producao_id"]] if not df_prod.empty else pd.DataFrame()
@@ -618,7 +647,7 @@ if role_of(user) == "discente":
 # LOGOUT
 # =========================================================
 st.divider()
-if st.button("🚪 Sair"):
+if st.button("🚪 Sair", key="btn_logout"):
     st.session_state.logged = False
     st.session_state.user = {}
     st.rerun()
