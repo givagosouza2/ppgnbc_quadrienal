@@ -1,4 +1,4 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v4.5 - COMPLETO E CORRIGIDO)
+# app.py — Sistema de Monitoramento de Produção do PPG (v4.6 - Com descrição qualitativa)
 # Streamlit + Google Sheets + E-mails
 # Roles: admin (coordenador), docente, discente
 # =========================================================
@@ -42,8 +42,9 @@ HEADERS_USERS = ["username", "name", "email", "role", "orientador", "password_ha
 HEADERS_CAD   = ["id", "name", "username", "email", "role", "orientador",
                  "password_hash", "status", "created_at", "reviewed_at",
                  "reviewed_by", "review_reason"]
+# ✅ NOVO: adicionada coluna "descricao" após "doi"
 HEADERS_PROD  = ["id", "docente_username", "titulo", "tipo", "ano",
-                 "veiculo", "autores", "doi", "created_at"]
+                 "veiculo", "autores", "doi", "descricao", "created_at"]
 HEADERS_PART  = ["id", "producao_id", "tipo_participacao",
                  "nome_participante", "vinculo", "created_at"]
 HEADERS_VINC  = ["id", "discente_username", "orientador_username",
@@ -71,6 +72,8 @@ st.markdown("""
 .big-status-ok  { background:#b9f6ca; padding:12px; font-size:18px; border-radius:10px; text-align:center; }
 .big-status-bad { background:#ff8a80; padding:12px; font-size:18px; border-radius:10px; text-align:center; }
 .small-muted { color:#666; font-size:0.9rem; }
+.descricao-box { background:#fff8e1; border-left:4px solid #ffb300; padding:10px 14px;
+                 border-radius:6px; margin:10px 0; font-size:0.95rem; white-space:pre-wrap;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -166,7 +169,7 @@ def ensure_header(ws_obj, headers):
         if len(vals) >= 1 and vals[0] != headers:
             ws_obj.update("1:1", [headers])
     except APIError as e:
-        st.warning(f"⚠️ Erro ao verificar aba '{ws_obj.title}': {e}")
+        st.warning(f"️ Erro ao verificar aba '{ws_obj.title}': {e}")
 
 def ensure_worksheets(sh):
     wmap = get_worksheets_map(sh)
@@ -224,7 +227,6 @@ def authenticate(username, password):
         return True, u
     return False, "Senha inválida."
 
-# ✅ FUNÇÃO CORRIGIDA: Aceita "admin", "administrador" ou "coordenador"
 def role_of(user): 
     role = str(user.get("role", "")).strip().lower()
     if role in ["admin", "administrador", "coordenador"]:
@@ -287,22 +289,26 @@ def cadastro_review(req_id, action, admin_username, reason=""):
                    f"Olá, {df.loc[i,'name']}!\n\nSeu cadastro foi: {status}.\nMotivo: {reason or '—'}")
     return True, f"Solicitação {status.lower()}."
 
-def producao_submit(docente_username, titulo, tipo, ano, veiculo, autores, doi):
+# ✅ NOVO: producao_submit com descricao
+def producao_submit(docente_username, titulo, tipo, ano, veiculo, autores, doi, descricao=""):
     prod_id = str(uuid.uuid4())
     ws(SHEET_PROD).append_row([prod_id, docente_username, titulo.strip(), tipo, str(ano),
-        veiculo.strip(), autores.strip(), doi.strip(), datetime.utcnow().isoformat(timespec="seconds")])
+        veiculo.strip(), autores.strip(), doi.strip(), descricao.strip(), 
+        datetime.utcnow().isoformat(timespec="seconds")])
     clear_cache()
     return prod_id
 
-def producao_update(producao_id, titulo, tipo, ano, veiculo, autores, doi):
+# ✅ ATUALIZADO: producao_update agora atualiza C:I (incluindo descricao)
+def producao_update(producao_id, titulo, tipo, ano, veiculo, autores, doi, descricao=""):
     df = read_df(SHEET_PROD)
     idx = df.index[df["id"] == producao_id]
     if len(idx) == 0: return False, "Produção não encontrada."
     i = int(idx[0])
     w = ws(SHEET_PROD)
     row_number = i + 2
-    range_name = f"C{row_number}:H{row_number}"
-    values = [[titulo.strip(), tipo, str(ano), veiculo.strip(), autores.strip(), doi.strip()]]
+    # C=titulo, D=tipo, E=ano, F=veiculo, G=autores, H=doi, I=descricao
+    range_name = f"C{row_number}:I{row_number}"
+    values = [[titulo.strip(), tipo, str(ano), veiculo.strip(), autores.strip(), doi.strip(), descricao.strip()]]
     w.update(range_name, values)
     clear_cache()
     return True, "Produção atualizada com sucesso!"
@@ -407,8 +413,8 @@ if user_role == "admin":
     df_vinc = read_df(SHEET_VINC)
 
     t1, t2, t3, t4, t5, t6 = st.tabs([
-        "👥 Usuários", "👤 Cadastros pendentes", " Produções (geral)", 
-        " Resumo por ano", "⚙️ Histórico", "➕ Cadastrar Produção"
+        "👥 Usuários", "👤 Cadastros pendentes", "📚 Produções (geral)", 
+        "📊 Resumo por ano", "⚙️ Histórico", "➕ Cadastrar Produção"
     ])
 
     with t1:
@@ -447,7 +453,7 @@ if user_role == "admin":
         if df_prod.empty: st.info("Sem produções.")
         else:
             for ano in ANOS:
-                st.markdown(f"### 📅 {ano}")
+                st.markdown(f"###  {ano}")
                 subset = df_prod[df_prod["ano"].astype(str).str.strip() == ano]
                 if subset.empty: st.write("— Nenhuma produção registrada —")
                 else:
@@ -482,11 +488,18 @@ if user_role == "admin":
                     veiculo = st.text_input("Veículo/Periódico", key="admin_prod_veiculo")
                     autores = st.text_input("Autores", key="admin_prod_autores")
                     doi = st.text_input("DOI (opcional)", key="admin_prod_doi")
+                # ✅ NOVO: campo de descrição qualitativa
+                descricao = st.text_area(
+                    "📝 Descrição qualitativa (opcional)",
+                    placeholder="Descreva o contexto, relevância, impacto ou detalhes qualitativos desta produção...",
+                    height=120,
+                    key="admin_prod_descricao"
+                )
                 submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
                 if submitted:
                     if not titulo.strip(): st.error("Título é obrigatório.")
                     else:
-                        producao_submit(selected_username, titulo, tipo, ano, veiculo, autores, doi)
+                        producao_submit(selected_username, titulo, tipo, ano, veiculo, autores, doi, descricao)
                         st.success(f"Produção cadastrada para {selected_label.split(' (')[0]}!")
                         st.rerun()
     st.divider()
@@ -495,12 +508,12 @@ if user_role == "admin":
 # PAINEL DOCENTE
 # =========================================================
 elif user_role == "docente":
-    st.subheader(f" Minhas produções — {user.get('name','')}")
+    st.subheader(f"📚 Minhas produções — {user.get('name','')}")
     df_prod = read_df(SHEET_PROD)
     df_part = read_df(SHEET_PART)
     mine = df_prod[df_prod["docente_username"] == user["username"]] if not df_prod.empty else pd.DataFrame()
 
-    st.markdown("###  Minhas produções")
+    st.markdown("### 📋 Minhas produções")
     tem_producoes = False
     for ano in ANOS:
         subset = mine[mine["ano"].astype(str).str.strip() == ano] if not mine.empty else pd.DataFrame()
@@ -512,6 +525,10 @@ elif user_role == "docente":
                     st.write(f"**Veículo:** {row['veiculo']}")
                     st.write(f"**Autores:** {row['autores']}")
                     st.write(f"**DOI:** {row['doi'] or '—'}")
+                    # ✅ NOVO: exibir descrição qualitativa
+                    descricao_text = str(row.get('descricao', '')).strip()
+                    if descricao_text:
+                        st.markdown(f'<div class="descricao-box"><b>📝 Descrição qualitativa:</b><br>{descricao_text}</div>', unsafe_allow_html=True)
                     parts = df_part[df_part["producao_id"] == row["id"]] if not df_part.empty else pd.DataFrame()
                     if not parts.empty:
                         st.write("**Participações:**")
@@ -521,7 +538,7 @@ elif user_role == "docente":
                         if st.button("✏️ Editar", key=f"edit_{row['id']}", use_container_width=True):
                             st.session_state['editing_prod_id'] = row['id']; st.rerun()
                     with col2:
-                        if st.button("️ Excluir", key=f"del_{row['id']}", use_container_width=True):
+                        if st.button("🗑️ Excluir", key=f"del_{row['id']}", use_container_width=True):
                             st.session_state['deleting_prod_id'] = row['id']; st.rerun()
     
     if not tem_producoes: st.info("Nenhuma produção cadastrada.")
@@ -546,6 +563,15 @@ elif user_role == "docente":
                     veiculo = st.text_input("Veículo", value=prod_data['veiculo'], key=f"edit_veiculo_{pid}")
                     autores = st.text_input("Autores", value=prod_data['autores'], key=f"edit_autores_{pid}")
                     doi = st.text_input("DOI", value=prod_data['doi'], key=f"edit_doi_{pid}")
+                # ✅ NOVO: campo de descrição no formulário de edição
+                descricao_atual = str(prod_data.get('descricao', '')).strip()
+                descricao = st.text_area(
+                    "📝 Descrição qualitativa",
+                    value=descricao_atual,
+                    placeholder="Descreva o contexto, relevância, impacto ou detalhes qualitativos...",
+                    height=120,
+                    key=f"edit_descricao_{pid}"
+                )
                 st.divider()
                 st.subheader("👥 Participações")
                 parts_current = df_part[df_part["producao_id"] == pid] if not df_part.empty else pd.DataFrame()
@@ -562,7 +588,7 @@ elif user_role == "docente":
                 with c_save2:
                     if st.form_submit_button("💾 Salvar", use_container_width=True):
                         if titulo.strip():
-                            ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, autores, doi)
+                            ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, autores, doi, descricao)
                             if ok: st.session_state.pop('editing_prod_id', None); st.success(msg); st.rerun()
                 with c_cancel:
                     if st.form_submit_button("❌ Cancelar", use_container_width=True):
@@ -574,7 +600,7 @@ elif user_role == "docente":
         prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
         prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
         if prod_data is not None:
-            st.error(f"️ Excluir: {prod_data['titulo']}")
+            st.error(f"🗑️ Excluir: {prod_data['titulo']}")
             st.warning("⚠️ Esta ação não pode ser desfeita!")
             c1, c2 = st.columns(2)
             with c1:
@@ -610,6 +636,10 @@ elif user_role == "discente":
                 pid = row["id"]; ja = pid in ja_participei
                 with st.expander(f"{'✅' if ja else '⬜'} [{row['ano']}] {row['titulo']}"):
                     st.write(f"**Tipo:** {row['tipo']} | **Veículo:** {row['veiculo']}")
+                    # ✅ NOVO: discente também vê a descrição
+                    descricao_text = str(row.get('descricao', '')).strip()
+                    if descricao_text:
+                        st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{descricao_text}</div>', unsafe_allow_html=True)
                     if ja: st.success("Você já registrou participação.")
                     else:
                         if st.button("Registrar participação", key=f"vinc_{pid}"):
