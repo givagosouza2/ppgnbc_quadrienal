@@ -1,4 +1,4 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v3 com Edição e Exclusão)
+# app.py — Sistema de Monitoramento de Produção do PPG (v3.1)
 # Streamlit + Google Sheets + E-mails
 # Roles: admin, docente, discente
 # =========================================================
@@ -390,7 +390,7 @@ st.success(f"Logado como **{user.get('name','')}**  | perfil: **{role_of(user)}*
 # PAINEL ADMIN
 # =========================================================
 if role_of(user) == "admin":
-    st.subheader("️ Painel do Coordenador")
+    st.subheader("🛠️ Painel do Coordenador")
     df_users = read_df(SHEET_USERS); df_cad = read_df(SHEET_CAD)
     df_prod = read_df(SHEET_PROD); df_part = read_df(SHEET_PART); df_vinc = read_df(SHEET_VINC)
 
@@ -459,7 +459,7 @@ if role_of(user) == "docente":
     mine = df_prod[df_prod["docente_username"] == user["username"]] if not df_prod.empty else pd.DataFrame()
 
     for ano in ANOS:
-        st.markdown(f"###  {ano}")
+        st.markdown(f"### 📅 {ano}")
         subset = mine[mine["ano"].astype(str) == ano] if not mine.empty else pd.DataFrame()
         if not subset.empty:
             for _, row in subset.iterrows():
@@ -537,7 +537,9 @@ if role_of(user) == "docente":
     # Formulário para EDITAR produção
     if 'editing_prod_id' in st.session_state:
         pid = st.session_state['editing_prod_id']
-        prod_data = df_prod[df_prod["id"] == pid].iloc[0] if not df_prod.empty else None
+        # CORREÇÃO: verificar se o filtro retornou algo antes de usar .iloc[0]
+        prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
+        prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
 
         if prod_data is not None:
             st.markdown("---")
@@ -567,15 +569,22 @@ if role_of(user) == "docente":
             if st.button("Cancelar edição", key=f"btn_cancel_edit_{pid}"):
                 st.session_state.pop('editing_prod_id', None)
                 st.rerun()
+        else:
+            st.warning("Produção não encontrada. Ela pode ter sido excluída.")
+            if st.button("Voltar", key="btn_back_edit"):
+                st.session_state.pop('editing_prod_id', None)
+                st.rerun()
 
     # Formulário para EXCLUIR produção (Confirmação)
     if 'deleting_prod_id' in st.session_state:
         pid = st.session_state['deleting_prod_id']
-        prod_data = df_prod[df_prod["id"] == pid].iloc[0] if not df_prod.empty else None
+        # CORREÇÃO: verificar se o filtro retornou algo antes de usar .iloc[0]
+        prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
+        prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
 
         if prod_data is not None:
             st.markdown("---")
-            st.subheader(f"🗑️ Excluir produção: {prod_data['titulo']}")
+            st.subheader(f"️ Excluir produção: {prod_data['titulo']}")
             st.warning("⚠️ **Atenção:** Tem certeza que deseja excluir esta produção? Esta ação não pode ser desfeita e apagará também as participações vinculadas.")
             
             c1, c2 = st.columns(2)
@@ -592,6 +601,11 @@ if role_of(user) == "docente":
                 if st.button("Cancelar", use_container_width=True, key=f"btn_cancel_del_{pid}"):
                     st.session_state.pop('deleting_prod_id', None)
                     st.rerun()
+        else:
+            st.warning("Produção não encontrada. Ela pode já ter sido excluída.")
+            if st.button("Voltar", key="btn_back_del"):
+                st.session_state.pop('deleting_prod_id', None)
+                st.rerun()
 
 # =========================================================
 # PAINEL DISCENTE
@@ -630,7 +644,7 @@ if role_of(user) == "discente":
     else: st.warning("Não foi possível localizar seu orientador no sistema.")
 
     st.divider()
-    st.markdown("###  Minhas participações registradas")
+    st.markdown("### 📋 Minhas participações registradas")
     if not df_vinc.empty:
         mine = df_vinc[df_vinc["discente_username"] == user["username"]]
         if mine.empty: st.info("Você ainda não registrou participações.")
@@ -649,5 +663,5 @@ if role_of(user) == "discente":
 # LOGOUT
 # =========================================================
 st.divider()
-if st.button("🚪 Sair", key="btn_logout"):
+if st.button(" Sair", key="btn_logout"):
     st.session_state.logged = False; st.session_state.user = {}; st.rerun()
