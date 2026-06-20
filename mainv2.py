@@ -710,16 +710,16 @@ if st.session_state.page == "public":
             st.markdown(f"""
             <div class="metric-card-blue">
                 <div class="metric-value">{stats['artigos_com_discente_primeiro']}</div>
-                <div class="metric-label">🎓 Artigos com Discente do PPG<br>como <strong>1º Autor</strong></div>
+                <div class="metric-label">🎓 Artigos com Discente do PPG<br>como <strong>Primeiro/Último Autor</strong></div>
             </div>""", unsafe_allow_html=True)
-            st.info("💡 Indica liderança discente na pesquisa")
+            st.info("💡 Indica destaque discente")
         with col2:
             st.markdown(f"""
             <div class="metric-card-green">
                 <div class="metric-value">{stats['artigos_com_docente_ultimo']}</div>
-                <div class="metric-label">👨‍🏫 Artigos com Docente do PPG<br>como <strong>Último Autor</strong></div>
+                <div class="metric-label">👨‍🏫 Artigos com Docente do PPG<br>como <strong>Primeiro/Último Autor</strong></div>
             </div>""", unsafe_allow_html=True)
-            st.info("💡 Indica orientação docente (último autor geralmente é o orientador)")
+            st.info("💡 Indica destaque docente")
         
         st.divider()
         
