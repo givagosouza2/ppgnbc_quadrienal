@@ -1,5 +1,6 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v4.4 - COMPLETO)
+# app.py — Sistema de Monitoramento de Produção do PPG (v4.5 - COMPLETO E CORRIGIDO)
 # Streamlit + Google Sheets + E-mails
+# Roles: admin (coordenador), docente, discente
 # =========================================================
 
 import os, time, base64, uuid, hashlib, hmac, smtplib
@@ -223,15 +224,21 @@ def authenticate(username, password):
         return True, u
     return False, "Senha inválida."
 
-def role_of(user): return str(user.get("role", "")).strip().lower()
+# ✅ FUNÇÃO CORRIGIDA: Aceita "admin", "administrador" ou "coordenador"
+def role_of(user): 
+    role = str(user.get("role", "")).strip().lower()
+    if role in ["admin", "administrador", "coordenador"]:
+        return "admin"
+    elif role in ["docente", "professor"]:
+        return "docente"
+    elif role in ["discente", "aluno", "estudante"]:
+        return "discente"
+    return role
 
-# ---------------------------------------------------------
-# CADASTRO & PRODUÇÕES (CRUD)
-# ---------------------------------------------------------
 def listar_docentes():
     df = read_df(SHEET_USERS)
     if df.empty: return []
-    return sorted(df[df["role"].str.lower() == "docente"]["name"].tolist())
+    return sorted(df[df["role"].str.lower().isin(["docente", "professor"])]["name"].tolist())
 
 def cadastro_submit(name, username, email, password, role, orientador=""):
     if users_get(username): return False, "Username já existe."
@@ -384,25 +391,24 @@ if not st.session_state.logged:
 # ÁREA LOGADA
 # ---------------------------------------------------------
 user = st.session_state.user
-st.success(f"Logado como **{user.get('name','')}**  | perfil: **{role_of(user)}**")
+user_role = role_of(user)
+st.success(f"Logado como **{user.get('name','')}**  | perfil: **{user_role}**")
 
 # =========================================================
 # PAINEL ADMIN (COORDENADOR)
 # =========================================================
-if role_of(user) == "admin":
+if user_role == "admin":
     st.subheader("🛠️ Painel do Coordenador")
     
-    # Carregar dados
     df_users = read_df(SHEET_USERS)
     df_cad = read_df(SHEET_CAD)
     df_prod = read_df(SHEET_PROD)
     df_part = read_df(SHEET_PART)
     df_vinc = read_df(SHEET_VINC)
 
-    # Criar abas
     t1, t2, t3, t4, t5, t6 = st.tabs([
-        "👥 Usuários", "👤 Cadastros pendentes", "📚 Produções (geral)", 
-        "📊 Resumo por ano", "⚙️ Histórico", "➕ Cadastrar Produção"
+        "👥 Usuários", "👤 Cadastros pendentes", " Produções (geral)", 
+        " Resumo por ano", "⚙️ Histórico", "➕ Cadastrar Produção"
     ])
 
     with t1:
@@ -458,7 +464,7 @@ if role_of(user) == "admin":
 
     with t6:
         st.subheader("➕ Cadastrar nova produção para um docente")
-        docentes_df = df_users[df_users["role"].str.lower() == "docente"] if not df_users.empty else pd.DataFrame()
+        docentes_df = df_users[df_users["role"].str.lower().isin(["docente", "professor"])] if not df_users.empty else pd.DataFrame()
         if docentes_df.empty:
             st.info("Nenhum docente cadastrado no sistema ainda.")
         else:
@@ -488,13 +494,13 @@ if role_of(user) == "admin":
 # =========================================================
 # PAINEL DOCENTE
 # =========================================================
-if role_of(user) == "docente":
-    st.subheader(f"📚 Minhas produções — {user.get('name','')}")
+elif user_role == "docente":
+    st.subheader(f" Minhas produções — {user.get('name','')}")
     df_prod = read_df(SHEET_PROD)
     df_part = read_df(SHEET_PART)
     mine = df_prod[df_prod["docente_username"] == user["username"]] if not df_prod.empty else pd.DataFrame()
 
-    st.markdown("### 📋 Minhas produções")
+    st.markdown("###  Minhas produções")
     tem_producoes = False
     for ano in ANOS:
         subset = mine[mine["ano"].astype(str).str.strip() == ano] if not mine.empty else pd.DataFrame()
@@ -515,13 +521,12 @@ if role_of(user) == "docente":
                         if st.button("✏️ Editar", key=f"edit_{row['id']}", use_container_width=True):
                             st.session_state['editing_prod_id'] = row['id']; st.rerun()
                     with col2:
-                        if st.button("🗑️ Excluir", key=f"del_{row['id']}", use_container_width=True):
+                        if st.button("️ Excluir", key=f"del_{row['id']}", use_container_width=True):
                             st.session_state['deleting_prod_id'] = row['id']; st.rerun()
     
     if not tem_producoes: st.info("Nenhuma produção cadastrada.")
     st.divider()
 
-    # Edição
     if 'editing_prod_id' in st.session_state:
         pid = st.session_state['editing_prod_id']
         prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
@@ -564,13 +569,12 @@ if role_of(user) == "docente":
                         st.session_state.pop('editing_prod_id', None); st.rerun()
         st.divider()
 
-    # Exclusão
     if 'deleting_prod_id' in st.session_state:
         pid = st.session_state['deleting_prod_id']
         prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
         prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
         if prod_data is not None:
-            st.error(f"🗑️ Excluir: {prod_data['titulo']}")
+            st.error(f"️ Excluir: {prod_data['titulo']}")
             st.warning("⚠️ Esta ação não pode ser desfeita!")
             c1, c2 = st.columns(2)
             with c1:
@@ -585,7 +589,7 @@ if role_of(user) == "docente":
 # =========================================================
 # PAINEL DISCENTE
 # =========================================================
-if role_of(user) == "discente":
+elif user_role == "discente":
     st.subheader(f"🎓 Minha trajetória — {user.get('name','')}")
     orientador_nome = user.get("orientador", "")
     st.info(f"Orientador: **{orientador_nome or 'não informado'}**")
