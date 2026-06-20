@@ -1,6 +1,5 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v5.0 - Página Pública + Dashboard)
+# app.py — Sistema de Monitoramento de Produção do PPG (v5.0.1 - IDs únicos)
 # Streamlit + Google Sheets + E-mails
-# Roles: admin (coordenador), docente, discente, público
 # =========================================================
 
 import os, time, base64, uuid, hashlib, hmac, smtplib, re
@@ -30,7 +29,7 @@ try:
 except Exception:
     pass
 
-st.title("🎓 Sistema de Monitoramento de Produção do PPG")
+st.title(" Sistema de Monitoramento de Produção do PPG")
 
 SPREADSHEET_ID = st.secrets.get("GSHEET_SPREADSHEET_ID", "")
 if not SPREADSHEET_ID:
@@ -182,11 +181,9 @@ def ensure_header(ws_obj, headers):
         if not vals:
             ws_obj.append_row(headers)
             return
-        
         cabecalho_atual = vals[0]
         if cabecalho_atual == headers:
             return
-        
         colunas_faltantes = [h for h in headers if h not in cabecalho_atual]
         if colunas_faltantes:
             ultima_coluna = len(cabecalho_atual)
@@ -286,20 +283,17 @@ def verificar_duplicacao(doi, titulo):
     df = read_df(SHEET_PROD)
     if df.empty:
         return None
-    
     if doi and doi.strip():
         doi_clean = doi.strip().lower()
         match = df[df["doi"].str.strip().str.lower() == doi_clean]
         if not match.empty:
             return match.iloc[0]
-    
     if titulo and titulo.strip():
         titulo_clean = titulo.strip().lower()
         df["titulo_norm"] = df["titulo"].str.lower().str.strip()
         match = df[df["titulo_norm"] == titulo_clean]
         if not match.empty:
             return match.iloc[0]
-    
     return None
 
 def adicionar_co_autor(producao_id, username):
@@ -307,18 +301,13 @@ def adicionar_co_autor(producao_id, username):
     idx = df.index[df["id"] == producao_id]
     if len(idx) == 0:
         return False, "Produção não encontrada"
-    
     i = int(idx[0])
     if "co_autores" not in df.columns:
         return False, "Coluna co_autores não existe na planilha."
-    
     co_autores_atuais = str(df.loc[i, "co_autores"]).strip() if pd.notna(df.loc[i, "co_autores"]) else ""
-    
     if username in co_autores_atuais.split(","):
         return False, "Você já é co-autor desta produção"
-    
     novos_co_autores = f"{co_autores_atuais},{username}" if co_autores_atuais else username
-    
     w = ws(SHEET_PROD)
     row_number = i + 2
     col_map = {h: (j + 1) for j, h in enumerate(df.columns)}
@@ -326,18 +315,15 @@ def adicionar_co_autor(producao_id, username):
         w.update_cell(row_number, col_map["co_autores"], novos_co_autores)
         clear_cache()
         return True, "✅ Co-autoria adicionada com sucesso!"
-    
     return False, "Erro ao adicionar co-autor"
 
 def get_minhas_producoes(username):
     df = read_df(SHEET_PROD)
     if df.empty:
         return pd.DataFrame()
-    
     principal = df[df["docente_username"] == username].copy()
     if not principal.empty:
         principal["tipo_autoria"] = "principal"
-    
     coautor = pd.DataFrame()
     if "co_autores" in df.columns:
         username_clean = username.strip().lower()
@@ -346,7 +332,6 @@ def get_minhas_producoes(username):
         coautor = df[df["co_autores_clean"].str.contains(pattern, regex=True, na=False)].copy()
         if not coautor.empty:
             coautor["tipo_autoria"] = "coautor"
-    
     if not principal.empty and not coautor.empty:
         todas = pd.concat([principal, coautor]).drop_duplicates(subset=["id"])
     elif not principal.empty:
@@ -355,7 +340,6 @@ def get_minhas_producoes(username):
         todas = coautor
     else:
         todas = pd.DataFrame()
-    
     return todas
 
 def get_nome_autor_principal(username):
@@ -371,7 +355,6 @@ def cadastro_submit(name, username, email, password, role, orientador=""):
     if not df_cad.empty:
         m = (df_cad["username"].str.lower() == username.lower()) & (df_cad["status"] == "Pendente")
         if m.any(): return False, "Já existe cadastro pendente."
-
     req_id = str(uuid.uuid4())
     created = datetime.utcnow().isoformat(timespec="seconds")
     ws(SHEET_CAD).append_row([req_id, name.strip(), username.strip(), email.strip(),
@@ -391,21 +374,17 @@ def cadastro_review(req_id, action, admin_username, reason=""):
     i = int(idx[0])
     status = "Aprovado" if action == "Aprovar" else "Rejeitado"
     reviewed = datetime.utcnow().isoformat(timespec="seconds")
-    
     df.loc[i, "status"] = status; df.loc[i, "reviewed_at"] = reviewed
     df.loc[i, "reviewed_by"] = admin_username; df.loc[i, "review_reason"] = reason
-
     if action == "Aprovar":
         ws(SHEET_USERS).append_row([df.loc[i, "username"], df.loc[i, "name"], df.loc[i, "email"],
             df.loc[i, "role"], df.loc[i, "orientador"], df.loc[i, "password_hash"],
             datetime.utcnow().isoformat(timespec="seconds")])
-    
     row_number = i + 2
     col_map = {h: (j + 1) for j, h in enumerate(vals[0])}
     for col in ["status", "reviewed_at", "reviewed_by", "review_reason"]:
         if col in col_map: w.update_cell(row_number, col_map[col], str(df.loc[i, col]))
     clear_cache()
-
     email_user = str(df.loc[i, "email"]).strip()
     if email_user:
         send_email(email_user, f"Cadastro {status} — PPG",
@@ -427,11 +406,9 @@ def producao_update(producao_id, titulo, tipo, ano, veiculo, autores, doi, descr
     i = int(idx[0])
     w = ws(SHEET_PROD)
     row_number = i + 2
-    
     range_name = f"C{row_number}:J{row_number}"
     values = [[titulo.strip(), tipo, str(ano), veiculo.strip(), autores.strip(), 
                doi.strip(), descricao.strip(), co_autores.strip()]]
-    
     w.update(range_name, values)
     clear_cache()
     return True, "Produção atualizada com sucesso!"
@@ -440,7 +417,6 @@ def producao_delete(producao_id):
     df_prod = read_df(SHEET_PROD)
     idx_prod = df_prod.index[df_prod["id"] == producao_id]
     if len(idx_prod) == 0: return False, "Produção não encontrada."
-
     df_part = read_df(SHEET_PART)
     if not df_part.empty:
         idx_parts = df_part.index[df_part["producao_id"] == producao_id]
@@ -449,7 +425,6 @@ def producao_delete(producao_id):
             for i in sorted(idx_parts, reverse=True):
                 row_number = int(i) + 2
                 w_part.delete_rows(row_number)
-
     i = int(idx_prod[0])
     w_prod = ws(SHEET_PROD)
     row_number = i + 2
@@ -474,7 +449,6 @@ def vinculo_submit(discente_username, orientador_username, producao_id):
 # FUNÇÕES PARA PÁGINA PÚBLICA
 # ---------------------------------------------------------
 def tem_participacao_ppg(producao_id):
-    """Verifica se produção tem pelo menos um discente do PPG"""
     df_part = read_df(SHEET_PART)
     if df_part.empty:
         return False
@@ -482,30 +456,21 @@ def tem_participacao_ppg(producao_id):
     return any(parts["tipo_participacao"] == "Discente do PPG")
 
 def get_estatisticas():
-    """Calcula estatísticas para o dashboard público"""
     df_prod = read_df(SHEET_PROD)
-    
     total_producoes = len(df_prod)
-    
-    # Contagem por ano
     producoes_por_ano = {}
     producoes_com_ppg_por_ano = {}
     total_com_ppg = 0
-    
     for ano in ANOS:
         subset = df_prod[df_prod["ano"].astype(str).str.strip() == ano] if not df_prod.empty else pd.DataFrame()
         total_ano = len(subset)
         producoes_por_ano[ano] = total_ano
-        
-        # Conta produções com discentes do PPG
         com_ppg = 0
         for _, row in subset.iterrows():
             if tem_participacao_ppg(row["id"]):
                 com_ppg += 1
-        
         producoes_com_ppg_por_ano[ano] = com_ppg
         total_com_ppg += com_ppg
-    
     return {
         "total_producoes": total_producoes,
         "producoes_por_ano": producoes_por_ano,
@@ -518,22 +483,23 @@ def get_estatisticas():
 # ---------------------------------------------------------
 if "logged" not in st.session_state: st.session_state.logged = False
 if "user"   not in st.session_state: st.session_state.user   = {}
+if "page"   not in st.session_state: st.session_state.page   = "public"
 
 # ---------------------------------------------------------
 # NAVEGAÇÃO (SIDEBAR)
 # ---------------------------------------------------------
 with st.sidebar:
-    st.title("🧭 Navegação")
+    st.title(" Navegação")
     
     if st.session_state.logged:
         st.success(f"👤 {st.session_state.user.get('name', '')}")
         st.caption(f"Perfil: {role_of(st.session_state.user)}")
         
-        if st.button("🏠 Página Pública", use_container_width=True):
+        if st.button(" Página Pública", use_container_width=True, key="btn_public_sidebar"):
             st.session_state.page = "public"
             st.rerun()
         
-        if st.button("🔒 Área Restrita", use_container_width=True):
+        if st.button("🔒 Área Restrita", use_container_width=True, key="btn_private_sidebar"):
             st.session_state.page = "private"
             st.rerun()
         
@@ -547,13 +513,9 @@ with st.sidebar:
         st.info("🔓 Área Pública")
         st.caption("Visualize as produções e estatísticas")
         
-        if st.button("🔑 Login", use_container_width=True):
+        if st.button("🔑 Login", use_container_width=True, key="btn_login_sidebar"):
             st.session_state.page = "login"
             st.rerun()
-    
-    # Controle de página
-    if "page" not in st.session_state:
-        st.session_state.page = "public"
 
 # =========================================================
 # PÁGINA PÚBLICA (SEM LOGIN)
@@ -566,15 +528,12 @@ if st.session_state.page == "public":
     </div>
     """, unsafe_allow_html=True)
     
-    # Menu de navegação pública
-    tab_dashboard, tab_producoes = st.tabs(["📊 Dashboard", "📚 Produções Científicas"])
+    tab_dashboard, tab_producoes = st.tabs(["📊 Dashboard", " Produções Científicas"])
     
     with tab_dashboard:
         st.subheader("📊 Dashboard de Produções")
-        
         stats = get_estatisticas()
         
-        # Métricas principais
         c1, c2, c3 = st.columns(3)
         with c1:
             st.markdown(f"""
@@ -583,7 +542,6 @@ if st.session_state.page == "public":
                 <div class="metric-label">Total de Produções</div>
             </div>
             """, unsafe_allow_html=True)
-        
         with c2:
             st.markdown(f"""
             <div class="metric-card">
@@ -591,7 +549,6 @@ if st.session_state.page == "public":
                 <div class="metric-label">Com Discentes do PPG</div>
             </div>
             """, unsafe_allow_html=True)
-        
         with c3:
             percent = (stats['total_com_ppg'] / stats['total_producoes'] * 100) if stats['total_producoes'] > 0 else 0
             st.markdown(f"""
@@ -602,12 +559,8 @@ if st.session_state.page == "public":
             """, unsafe_allow_html=True)
         
         st.divider()
-        
-        # Gráficos por ano
         st.subheader("📈 Evolução por Ano")
-        
         col1, col2 = st.columns(2)
-        
         with col1:
             st.markdown("#### Total de Produções por Ano")
             df_total_ano = pd.DataFrame({
@@ -615,7 +568,6 @@ if st.session_state.page == "public":
                 'Produções': list(stats['producoes_por_ano'].values())
             })
             st.bar_chart(df_total_ano.set_index('Ano'))
-        
         with col2:
             st.markdown("#### Produções com Discentes do PPG por Ano")
             df_ppg_ano = pd.DataFrame({
@@ -625,8 +577,6 @@ if st.session_state.page == "public":
             st.bar_chart(df_ppg_ano.set_index('Ano'))
         
         st.divider()
-        
-        # Tabela resumo
         st.subheader("📋 Resumo Detalhado por Ano")
         df_resumo = pd.DataFrame({
             'Ano': ANOS,
@@ -637,21 +587,18 @@ if st.session_state.page == "public":
     
     with tab_producoes:
         st.subheader("📚 Produções Científicas")
-        
         df_prod = read_df(SHEET_PROD)
         df_part = read_df(SHEET_PART)
         
         if df_prod.empty:
             st.info("Nenhuma produção cadastrada ainda.")
         else:
-            # Filtros
             col1, col2 = st.columns(2)
             with col1:
-                filtro_ano = st.multiselect("Filtrar por ano", ANOS, default=ANOS)
+                filtro_ano = st.multiselect("Filtrar por ano", ANOS, default=ANOS, key="filtro_ano_public")
             with col2:
-                filtro_tipo = st.multiselect("Filtrar por tipo", TIPOS_PRODUCAO)
+                filtro_tipo = st.multiselect("Filtrar por tipo", TIPOS_PRODUCAO, key="filtro_tipo_public")
             
-            # Aplicar filtros
             df_filtrado = df_prod.copy()
             if filtro_ano:
                 df_filtrado = df_filtrado[df_filtrado["ano"].astype(str).str.strip().isin(filtro_ano)]
@@ -660,35 +607,26 @@ if st.session_state.page == "public":
             
             st.write(f"**Total:** {len(df_filtrado)} produções encontradas")
             
-            # Listar produções
             for ano in ANOS:
                 subset = df_filtrado[df_filtrado["ano"].astype(str).str.strip() == ano]
                 if not subset.empty:
                     st.markdown(f"### 📅 {ano}")
                     for _, row in subset.iterrows():
                         with st.expander(f"**{row['titulo']}** — {row['tipo']}"):
-                            # Autor principal
                             autor_principal_nome = get_nome_autor_principal(row["docente_username"])
-                            st.markdown(f'<span class="main-author-tag">👤 Autor Principal: {autor_principal_nome}</span>', 
+                            st.markdown(f'<span class="main-author-tag"> Autor Principal: {autor_principal_nome}</span>', 
                                        unsafe_allow_html=True)
-                            
                             st.write(f"**Veículo:** {row['veiculo']}")
                             st.write(f"**Autores:** {row['autores']}")
                             st.write(f"**DOI:** {row['doi'] or '—'}")
-                            
-                            # Descrição
                             descricao_text = str(row.get('descricao', '')).strip()
                             if descricao_text:
                                 st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{descricao_text}</div>', 
                                            unsafe_allow_html=True)
-                            
-                            # Participações
                             parts = df_part[df_part["producao_id"] == row["id"]] if not df_part.empty else pd.DataFrame()
                             if not parts.empty:
                                 st.write("**Participações:**")
                                 st.dataframe(parts[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
-                                
-                                # Badge se tem discente do PPG
                                 if any(parts["tipo_participacao"] == "Discente do PPG"):
                                     st.success("✅ Conta com participação de discente(s) do PPG")
                             else:
@@ -703,12 +641,13 @@ if st.session_state.page == "public":
 elif st.session_state.page == "login":
     st.subheader("🔑 Acesso Restrito")
     
-    tab_login, tab_cad = st.tabs(["Login", "📝 Cadastro"])
+    tab_login, tab_cad = st.tabs([" Login", "📝 Cadastro"])
+    
     with tab_login:
         st.markdown("<div class='block-card'>", unsafe_allow_html=True)
         u = st.text_input("Usuário", key="login_user")
         p = st.text_input("Senha", type="password", key="login_pass")
-        if st.button("Entrar", use_container_width=True, key="btn_login"):
+        if st.button("Entrar", use_container_width=True, key="btn_login_main"):
             ok, res = authenticate(u, p)
             if ok:
                 st.session_state.logged = True
@@ -717,7 +656,9 @@ elif st.session_state.page == "login":
                 st.rerun()
             else: st.error(res)
         st.markdown("</div>", unsafe_allow_html=True)
-        if st.button("← Voltar para página pública"):
+        
+        # ✅ CORRIGIDO: key única
+        if st.button("← Voltar para página pública", key="btn_voltar_public_login"):
             st.session_state.page = "public"
             st.rerun()
 
@@ -743,7 +684,9 @@ elif st.session_state.page == "login":
                 (st.success if ok else st.error)(msg)
         st.info("O coordenador precisa aprovar seu cadastro.")
         st.markdown("</div>", unsafe_allow_html=True)
-        if st.button("← Voltar para página pública"):
+        
+        # ✅ CORRIGIDO: key única
+        if st.button("← Voltar para página pública", key="btn_voltar_public_cad"):
             st.session_state.page = "public"
             st.rerun()
 
@@ -758,11 +701,10 @@ elif st.session_state.page == "private":
     st.success(f"Logado como **{user.get('name','')}**  | perfil: **{user_role}**")
     
     # =========================================================
-    # PAINEL ADMIN (COORDENADOR)
+    # PAINEL ADMIN
     # =========================================================
     if user_role == "admin":
         st.subheader("🛠️ Painel do Coordenador")
-        
         df_users = read_df(SHEET_USERS)
         df_cad = read_df(SHEET_CAD)
         df_prod = read_df(SHEET_PROD)
@@ -770,8 +712,8 @@ elif st.session_state.page == "private":
         df_vinc = read_df(SHEET_VINC)
 
         t1, t2, t3, t4, t5, t6 = st.tabs([
-            "👥 Usuários", "👤 Cadastros pendentes", "📚 Produções (geral)", 
-            "📊 Resumo por ano", "⚙️ Histórico", "➕ Cadastrar Produção"
+            "👥 Usuários", "👤 Cadastros pendentes", " Produções (geral)", 
+            " Resumo por ano", "⚙️ Histórico", "➕ Cadastrar Produção"
         ])
 
         with t1:
@@ -835,7 +777,6 @@ elif st.session_state.page == "private":
                 selected_label = st.selectbox("Selecione o Docente", list(docente_options.keys()))
                 selected_username = docente_options[selected_label]
                 st.divider()
-                
                 with st.form("admin_form_prod"):
                     c1, c2 = st.columns(2)
                     with c1:
@@ -846,34 +787,21 @@ elif st.session_state.page == "private":
                         veiculo = st.text_input("Veículo/Periódico", key="admin_prod_veiculo")
                         autores = st.text_input("Autores", key="admin_prod_autores")
                         doi = st.text_input("DOI (opcional)", key="admin_prod_doi")
-                    
-                    descricao = st.text_area(
-                        "📝 Descrição qualitativa (opcional)",
-                        placeholder="Descreva o contexto, relevância, impacto...",
-                        height=100,
-                        key="admin_prod_descricao"
-                    )
-                    
+                    descricao = st.text_area("📝 Descrição qualitativa (opcional)",
+                        placeholder="Descreva o contexto, relevância, impacto...", height=100, key="admin_prod_descricao")
                     st.markdown("**👥 Co-autores do PPG (opcional)**")
                     docentes_list = listar_docentes()
                     docentes_list = [d for d in docentes_list if d != selected_label.split(" (")[0]]
                     co_autores_selecionados = st.multiselect(
                         "Selecione outros docentes do PPG que são co-autores:",
-                        docentes_list,
-                        key="admin_prod_coautores"
-                    )
+                        docentes_list, key="admin_prod_coautores")
                     co_autores_usernames = ",".join([
-                        get_docente_username_by_name(nome) 
-                        for nome in co_autores_selecionados 
-                        if get_docente_username_by_name(nome)
-                    ])
-                    
+                        get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
                     submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
                     if submitted:
                         if not titulo.strip(): st.error("Título é obrigatório.")
                         else:
-                            producao_submit(selected_username, titulo, tipo, ano, veiculo, 
-                                           autores, doi, descricao, co_autores_usernames)
+                            producao_submit(selected_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
                             st.success(f"Produção cadastrada para {selected_label.split(' (')[0]}!")
                             st.rerun()
         st.divider()
@@ -883,14 +811,11 @@ elif st.session_state.page == "private":
     # =========================================================
     elif user_role == "docente":
         st.subheader(f"📚 Minhas produções — {user.get('name','')}")
-        
         df_prod = read_df(SHEET_PROD)
         df_part = read_df(SHEET_PART)
-        
         todas_producoes = get_minhas_producoes(user_username)
         
         st.markdown("### 📋 Minhas produções")
-        
         if todas_producoes.empty:
             st.info("Nenhuma produção cadastrada.")
         else:
@@ -900,37 +825,31 @@ elif st.session_state.page == "private":
                     st.markdown(f"#### 📅 {ano}")
                     for _, row in subset.iterrows():
                         eh_principal = row.get("tipo_autoria", "") == "principal"
-                        
                         with st.expander(f"**{row['titulo']}** — {row['tipo']}"):
                             autor_principal_nome = get_nome_autor_principal(row["docente_username"])
                             st.markdown(f'<span class="main-author-tag">👤 Autor Principal: {autor_principal_nome}</span>', 
                                        unsafe_allow_html=True)
-                            
                             if eh_principal:
-                                st.markdown('<span class="autor-principal-badge">📝 Você é o responsável pelo cadastro</span>', 
+                                st.markdown('<span class="autor-principal-badge"> Você é o responsável pelo cadastro</span>', 
                                            unsafe_allow_html=True)
                             else:
-                                st.markdown('<span class="coautor-badge">👥 Você participa como co-autor</span>', 
+                                st.markdown('<span class="coautor-badge"> Você participa como co-autor</span>', 
                                            unsafe_allow_html=True)
-                            
                             st.write(f"**Veículo:** {row['veiculo']}")
                             st.write(f"**Autores:** {row['autores']}")
                             st.write(f"**DOI:** {row['doi'] or '—'}")
-                            
                             descricao_text = str(row.get('descricao', '')).strip()
                             if descricao_text:
                                 st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{descricao_text}</div>', 
                                            unsafe_allow_html=True)
-                            
                             parts = df_part[df_part["producao_id"] == row["id"]] if not df_part.empty else pd.DataFrame()
                             if not parts.empty:
                                 st.write("**Participações:**")
                                 st.dataframe(parts[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
-                            
                             if eh_principal:
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if st.button("✏️ Editar", key=f"edit_{row['id']}", use_container_width=True):
+                                    if st.button("️ Editar", key=f"edit_{row['id']}", use_container_width=True):
                                         st.session_state['editing_prod_id'] = row['id']; st.rerun()
                                 with col2:
                                     if st.button("🗑️ Excluir", key=f"del_{row['id']}", use_container_width=True):
@@ -939,9 +858,7 @@ elif st.session_state.page == "private":
                                 st.info("💡 Co-autores podem visualizar, mas não editar/excluir esta produção.")
         
         st.divider()
-        
         st.subheader("➕ Cadastrar nova produção")
-        
         with st.form("form_prod"):
             c1, c2 = st.columns(2)
             with c1:
@@ -952,30 +869,17 @@ elif st.session_state.page == "private":
                 veiculo = st.text_input("Veículo/Periódico", key="prod_veiculo")
                 autores = st.text_input("Autores", key="prod_autores")
                 doi = st.text_input("DOI (opcional)", key="prod_doi")
-            
-            descricao = st.text_area(
-                "📝 Descrição qualitativa (opcional)",
-                placeholder="Descreva o contexto, relevância, impacto...",
-                height=100,
-                key="prod_descricao"
-            )
-            
-            st.markdown("**👥 Co-autores do PPG (opcional)**")
+            descricao = st.text_area("📝 Descrição qualitativa (opcional)",
+                placeholder="Descreva o contexto, relevância, impacto...", height=100, key="prod_descricao")
+            st.markdown("** Co-autores do PPG (opcional)**")
             docentes_list = listar_docentes()
             docentes_list = [d for d in docentes_list if d != user.get('name', '')]
             co_autores_selecionados = st.multiselect(
                 "Selecione outros docentes do PPG que são co-autores:",
-                docentes_list,
-                key="prod_coautores"
-            )
+                docentes_list, key="prod_coautores")
             co_autores_usernames = ",".join([
-                get_docente_username_by_name(nome) 
-                for nome in co_autores_selecionados 
-                if get_docente_username_by_name(nome)
-            ])
-            
+                get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
             submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
-            
             if submitted:
                 if not titulo.strip():
                     st.error("Título é obrigatório.")
@@ -985,46 +889,32 @@ elif st.session_state.page == "private":
                         if duplicata is not None:
                             autor_principal = users_get(duplicata["docente_username"])
                             autor_nome = autor_principal["name"] if autor_principal else duplicata["docente_username"]
-                            
                             st.error(f"""
                             ⚠️ **Produção já cadastrada!**
-                            
                             **DOI:** {duplicata.get('doi', 'N/A')}  
                             **Cadastrada por:** {autor_nome}  
                             **Data:** {duplicata.get('created_at', 'N/A')}
-                            
                             Deseja se adicionar como co-autor ao invés de criar nova?
                             """)
-                            
                             col1, col2 = st.columns(2)
                             with col1:
                                 if st.button("✅ Sim, adicionar como co-autor", key="btn_coautor_submit"):
                                     ok, msg = adicionar_co_autor(duplicata["id"], user_username)
-                                    if ok:
-                                        st.success(msg)
-                                        st.balloons()
-                                        time.sleep(2)
-                                        st.rerun()
-                                    else:
-                                        st.error(msg)
+                                    if ok: st.success(msg); st.balloons(); time.sleep(2); st.rerun()
+                                    else: st.error(msg)
                             with col2:
                                 if st.button("❌ Não, cadastrar como nova", key="btn_forcar_nova"):
-                                    producao_submit(user_username, titulo, tipo, ano, veiculo, 
-                                                   autores, doi, descricao, co_autores_usernames)
-                                    st.success("Produção cadastrada!")
-                                    st.rerun()
+                                    producao_submit(user_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
+                                    st.success("Produção cadastrada!"); st.rerun()
                         else:
-                            producao_submit(user_username, titulo, tipo, ano, veiculo, 
-                                           autores, doi, descricao, co_autores_usernames)
-                            st.success("Produção cadastrada com sucesso!")
-                            st.rerun()
+                            producao_submit(user_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
+                            st.success("Produção cadastrada com sucesso!"); st.rerun()
         
         # Edição
         if 'editing_prod_id' in st.session_state:
             pid = st.session_state['editing_prod_id']
             prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
             prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
-            
             if prod_data is not None:
                 st.markdown("### ✏️ Editar produção")
                 with st.form(f"form_edit_{pid}"):
@@ -1040,69 +930,42 @@ elif st.session_state.page == "private":
                         veiculo = st.text_input("Veículo", value=prod_data['veiculo'], key=f"edit_veiculo_{pid}")
                         autores = st.text_input("Autores", value=prod_data['autores'], key=f"edit_autores_{pid}")
                         doi = st.text_input("DOI", value=prod_data['doi'], key=f"edit_doi_{pid}")
-                    
                     descricao_atual = str(prod_data.get('descricao', '')).strip()
-                    descricao = st.text_area(
-                        "📝 Descrição qualitativa",
-                        value=descricao_atual,
-                        placeholder="Descreva o contexto, relevância, impacto...",
-                        height=100,
-                        key=f"edit_descricao_{pid}"
-                    )
-                    
-                    st.markdown("**👥 Co-autores do PPG**")
+                    descricao = st.text_area("📝 Descrição qualitativa", value=descricao_atual,
+                        placeholder="Descreva o contexto, relevância, impacto...", height=100, key=f"edit_descricao_{pid}")
+                    st.markdown("** Co-autores do PPG**")
                     co_autores_atuais_str = str(prod_data.get('co_autores', '')).strip() if "co_autores" in prod_data.index else ""
                     co_autores_atuais_list = co_autores_atuais_str.split(",") if co_autores_atuais_str else []
                     co_autores_nomes = [
                         users_get(username)["name"] if users_get(username) else username
-                        for username in co_autores_atuais_list
-                    ]
-                    
+                        for username in co_autores_atuais_list]
                     docentes_list = listar_docentes()
                     docentes_list = [d for d in docentes_list if d != user.get('name', '')]
                     co_autores_selecionados = st.multiselect(
-                        "Selecione co-autores:",
-                        docentes_list,
-                        default=co_autores_nomes,
-                        key=f"edit_coautores_{pid}"
-                    )
+                        "Selecione co-autores:", docentes_list, default=co_autores_nomes, key=f"edit_coautores_{pid}")
                     co_autores_usernames = ",".join([
-                        get_docente_username_by_name(nome) 
-                        for nome in co_autores_selecionados 
-                        if get_docente_username_by_name(nome)
-                    ])
-                    
+                        get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
                     st.divider()
                     st.subheader("👥 Participações")
                     parts_current = df_part[df_part["producao_id"] == pid] if not df_part.empty else pd.DataFrame()
                     if not parts_current.empty:
                         st.dataframe(parts_current[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
-                    
                     c3, c4 = st.columns(2)
                     with c3: tipo_p = st.selectbox("Tipo", TIPOS_PARTICIPACAO, key=f"part_tipo_{pid}")
                     with c4: nome_p = st.text_input("Nome", key=f"part_nome_{pid}")
                     vinc = st.text_input("Vínculo (opcional)", key=f"part_vinc_{pid}")
-                    
                     c_save1, c_save2, c_cancel = st.columns([1, 1, 1])
                     with c_save1:
                         if st.form_submit_button("➕ Add participação", use_container_width=True):
-                            if nome_p.strip(): 
-                                participacao_submit(pid, tipo_p, nome_p, vinc)
-                                st.success("Adicionado!")
-                                st.rerun()
+                            if nome_p.strip(): participacao_submit(pid, tipo_p, nome_p, vinc); st.success("Adicionado!"); st.rerun()
                     with c_save2:
                         if st.form_submit_button("💾 Salvar", use_container_width=True):
                             if titulo.strip():
-                                ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, 
-                                                         autores, doi, descricao, co_autores_usernames)
-                                if ok: 
-                                    st.session_state.pop('editing_prod_id', None)
-                                    st.success(msg)
-                                    st.rerun()
+                                ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
+                                if ok: st.session_state.pop('editing_prod_id', None); st.success(msg); st.rerun()
                     with c_cancel:
                         if st.form_submit_button("❌ Cancelar", use_container_width=True):
-                            st.session_state.pop('editing_prod_id', None)
-                            st.rerun()
+                            st.session_state.pop('editing_prod_id', None); st.rerun()
             st.divider()
 
         # Exclusão
@@ -1110,7 +973,6 @@ elif st.session_state.page == "private":
             pid = st.session_state['deleting_prod_id']
             prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
             prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
-            
             if prod_data is not None:
                 st.error(f"🗑️ Excluir: {prod_data['titulo']}")
                 st.warning("⚠️ Esta ação não pode ser desfeita!")
@@ -1118,14 +980,10 @@ elif st.session_state.page == "private":
                 with c1:
                     if st.button("Sim, excluir", type="primary", use_container_width=True, key=f"btn_confirm_del_{pid}"):
                         ok, msg = producao_delete(pid)
-                        if ok: 
-                            st.session_state.pop('deleting_prod_id', None)
-                            st.success(msg)
-                            st.rerun()
+                        if ok: st.session_state.pop('deleting_prod_id', None); st.success(msg); st.rerun()
                 with c2:
                     if st.button("Cancelar", use_container_width=True, key=f"btn_cancel_del_{pid}"):
-                        st.session_state.pop('deleting_prod_id', None)
-                        st.rerun()
+                        st.session_state.pop('deleting_prod_id', None); st.rerun()
             st.divider()
 
     # =========================================================
@@ -1142,7 +1000,6 @@ elif st.session_state.page == "private":
         if not df_users.empty and orientador_nome:
             m = df_users["name"].str.lower() == orientador_nome.lower()
             if m.any(): orientador_username = df_users[m].iloc[0]["username"]
-        
         if orientador_username:
             prods_ori = df_prod[df_prod["docente_username"] == orientador_username] if not df_prod.empty else pd.DataFrame()
             if prods_ori.empty: st.info("Orientador sem produções.")
@@ -1152,7 +1009,7 @@ elif st.session_state.page == "private":
                 ja_participei = set() if meus_vinc.empty else set(meus_vinc["producao_id"].tolist())
                 for _, row in prods_ori.iterrows():
                     pid = row["id"]; ja = pid in ja_participei
-                    with st.expander(f"{'✅' if ja else ''} [{row['ano']}] {row['titulo']}"):
+                    with st.expander(f"{'✅' if ja else '⬜'} [{row['ano']}] {row['titulo']}"):
                         st.write(f"**Tipo:** {row['tipo']} | **Veículo:** {row['veiculo']}")
                         descricao_text = str(row.get('descricao', '')).strip()
                         if descricao_text:
