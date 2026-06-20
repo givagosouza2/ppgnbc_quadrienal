@@ -637,4 +637,83 @@ if role_of(user) == "docente":
         if prod_data is not None:
             st.markdown("---")
             st.error(f"🗑️ **Excluir produção: {prod_data['titulo']}**")
-            st.warning("
+            st.warning("⚠️ **Atenção:** Tem certeza que deseja excluir esta produção? Esta ação não pode ser desfeita e apagará também as participações vinculadas.")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Sim, excluir definitivamente", type="primary", use_container_width=True, key=f"btn_confirm_del_{pid}"):
+                    ok, msg = producao_delete(pid)
+                    if ok:
+                        st.session_state.pop('deleting_prod_id', None)
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            with c2:
+                if st.button("Cancelar", use_container_width=True, key=f"btn_cancel_del_{pid}"):
+                    st.session_state.pop('deleting_prod_id', None)
+                    st.rerun()
+        else:
+            st.warning("Produção não encontrada. Ela pode já ter sido excluída.")
+            if st.button("Voltar", key="btn_back_del"):
+                st.session_state.pop('deleting_prod_id', None)
+                st.rerun()
+
+# =========================================================
+# PAINEL DISCENTE
+# =========================================================
+if role_of(user) == "discente":
+    st.subheader(f"🎓 Minha trajetória — {user.get('name','')}")
+    orientador_nome = user.get("orientador", "")
+    st.info(f"Seu orientador no PPG: **{orientador_nome or 'não informado'}**")
+
+    df_prod = read_df(SHEET_PROD); df_vinc = read_df(SHEET_VINC); df_part = read_df(SHEET_PART)
+
+    orientador_username = ""
+    df_users = read_df(SHEET_USERS)
+    if not df_users.empty and orientador_nome:
+        m = df_users["name"].str.lower() == orientador_nome.lower()
+        if m.any(): orientador_username = df_users[m].iloc[0]["username"]
+
+    if orientador_username:
+        prods_ori = df_prod[df_prod["docente_username"] == orientador_username] if not df_prod.empty else pd.DataFrame()
+        if prods_ori.empty: st.info("Seu orientador ainda não cadastrou produções.")
+        else:
+            st.markdown("### 📚 Produções do orientador")
+            meus_vinc = df_vinc[df_vinc["discente_username"] == user["username"]] if not df_vinc.empty else pd.DataFrame()
+            ja_participei = set() if meus_vinc.empty else set(meus_vinc["producao_id"].tolist())
+
+            for _, row in prods_ori.iterrows():
+                pid = row["id"]; ja = pid in ja_participei
+                with st.expander(f"{'✅' if ja else ''} [{row['ano']}] {row['titulo']}"):
+                    st.write(f"**Tipo:** {row['tipo']} | **Veículo:** {row['veiculo']}")
+                    st.write(f"**Autores:** {row['autores']}")
+                    if ja: st.success("Você já registrou sua participação nesta produção.")
+                    else:
+                        if st.button("Registrar minha participação", key=f"vinc_{pid}"):
+                            vinculo_submit(user["username"], orientador_username, pid)
+                            st.success("Participação registrada!"); st.rerun()
+    else: st.warning("Não foi possível localizar seu orientador no sistema.")
+
+    st.divider()
+    st.markdown("### 📋 Minhas participações registradas")
+    if not df_vinc.empty:
+        mine = df_vinc[df_vinc["discente_username"] == user["username"]]
+        if mine.empty: st.info("Você ainda não registrou participações.")
+        else:
+            linhas = []
+            for _, v in mine.iterrows():
+                prod = df_prod[df_prod["id"] == v["producao_id"]] if not df_prod.empty else pd.DataFrame()
+                if not prod.empty:
+                    p = prod.iloc[0]
+                    linhas.append({"Ano": p["ano"], "Tipo": p["tipo"], "Título": p["titulo"], "Orientador": v["orientador_username"]})
+            if linhas: st.dataframe(pd.DataFrame(linhas), use_container_width=True)
+            else: st.info("Sem participações.")
+    else: st.info("Sem participações.")
+
+# =========================================================
+# LOGOUT
+# =========================================================
+st.divider()
+if st.button("🚪 Sair", key="btn_logout"):
+    st.session_state.logged = False; st.session_state.user = {}; st.rerun()
