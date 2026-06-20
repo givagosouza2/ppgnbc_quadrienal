@@ -810,8 +810,8 @@ if st.session_state.page == "public":
         st.markdown("""
         <div class="highlight-box" style="background:#fff3e0;">
         <p><strong>📌 Como funciona esta análise:</strong> Os docentes marcam <strong>explicitamente</strong> 
-        durante o cadastro/edição da produção se um discente do PPG é o primeiro autor e/ou se um docente 
-        do PPG é o último autor. Para produções antigas sem essa marcação, o sistema usa heurísticas 
+        durante o cadastro/edição da produção se um discente do PPG é o primeiro/último autor e/ou se um docente 
+        do PPG é o primeiro/último autor. Para produções antigas sem essa marcação, o sistema usa heurísticas 
         de comparação de nomes como fallback.</p>
         </div>""", unsafe_allow_html=True)
         
@@ -820,16 +820,16 @@ if st.session_state.page == "public":
             st.markdown(f"""
             <div class="metric-card-blue">
                 <div class="metric-value">{stats['artigos_com_discente_primeiro']}</div>
-                <div class="metric-label">🎓 Artigos com Discente do PPG<br>como <strong>1º Autor</strong></div>
+                <div class="metric-label">🎓 Artigos com Discente do PPG<br>como <strong>Primeiro/Último Autor</strong></div>
             </div>""", unsafe_allow_html=True)
-            st.info("💡 Indica liderança discente na pesquisa")
+            st.info("💡 Indica destaque discente")
         with col2:
             st.markdown(f"""
             <div class="metric-card-green">
                 <div class="metric-value">{stats['artigos_com_docente_ultimo']}</div>
-                <div class="metric-label">👨‍🏫 Artigos com Docente do PPG<br>como <strong>Último Autor</strong></div>
+                <div class="metric-label">👨‍🏫 Artigos com Docente do PPG<br>como <strong>Primeiro/Último Autor</strong></div>
             </div>""", unsafe_allow_html=True)
-            st.info("💡 Indica orientação docente (último autor geralmente é o orientador)")
+            st.info("💡 Indica destaque docente (primeiro/último autor geralmente é o orientador)")
         
         st.divider()
         
@@ -889,9 +889,9 @@ if st.session_state.page == "public":
                             discente_primeiro = str(row.get("discente_primeiro_autor", "")).strip().lower()
                             docente_ultimo = str(row.get("docente_ultimo_autor", "")).strip().lower()
                             if discente_primeiro == "sim":
-                                badges.append('<span class="badge-discente-1">🎓 Discente é 1º autor</span>')
+                                badges.append('<span class="badge-discente-1">🎓 Discente é primeiro/último autor</span>')
                             if docente_ultimo == "sim":
-                                badges.append('<span class="badge-docente-last">👨‍ Docente é último autor</span>')
+                                badges.append('<span class="badge-docente-last">👨‍ Docente é primeiro/último autor</span>')
                             if badges:
                                 st.markdown(" ".join(badges), unsafe_allow_html=True)
                             
@@ -1121,9 +1121,9 @@ elif st.session_state.page == "private":
                             discente_primeiro = str(row.get("discente_primeiro_autor", "")).strip().lower()
                             docente_ultimo = str(row.get("docente_ultimo_autor", "")).strip().lower()
                             if discente_primeiro == "sim":
-                                badges.append('<span class="badge-discente-1">🎓 Discente é 1º autor</span>')
+                                badges.append('<span class="badge-discente-1">🎓 Discente é primeiro/último autor</span>')
                             if docente_ultimo == "sim":
-                                badges.append('<span class="badge-docente-last">👨‍🏫 Docente é último autor</span>')
+                                badges.append('<span class="badge-docente-last">👨‍🏫 Docente é primeiro/último autor</span>')
                             if badges:
                                 st.markdown(" ".join(badges), unsafe_allow_html=True)
                             
