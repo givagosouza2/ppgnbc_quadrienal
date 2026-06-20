@@ -1,9 +1,6 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v4.3 - SEGURO)
+# app.py — Sistema de Monitoramento de Produção do PPG (v4.4 - COMPLETO)
 # Streamlit + Google Sheets + E-mails
-# Roles: admin (coordenador), docente, discente
 # =========================================================
-# ⚠️ ATENÇÃO: Esta versão PRESERVA todos os dados existentes.
-# A função ensure_header NUNCA apaga dados, apenas verifica/atualiza cabeçalhos.
 
 import os, time, base64, uuid, hashlib, hmac, smtplib
 from email.message import EmailMessage
@@ -116,7 +113,7 @@ def verify_password(password, stored):
         return False
 
 # ---------------------------------------------------------
-# GOOGLE SHEETS - VERSÃO SEGURA (NUNCA APAGA DADOS)
+# GOOGLE SHEETS
 # ---------------------------------------------------------
 @st.cache_resource
 def gclient():
@@ -158,31 +155,19 @@ def sheets_health_check_or_stop():
 def get_worksheets_map(sh):
     return {w.title: w for w in sh.worksheets()}
 
-# ✅ FUNÇÃO SEGURA: NUNCA APAGA DADOS
 def ensure_header(ws_obj, headers):
-    """
-    Garante que o cabeçalho está correto.
-    ⚠️ NUNCA apaga dados existentes. Apenas:
-    - Adiciona cabeçalho se a aba estiver vazia
-    - Atualiza a linha 1 se o cabeçalho estiver diferente
-    """
+    """Garante que o cabeçalho está correto SEM APAGAR DADOS."""
     try:
         vals = ws_obj.get_all_values()
         if not vals:
-            # Aba completamente vazia - adiciona apenas o cabeçalho
             ws_obj.append_row(headers)
             return
-        # Se a primeira linha (cabeçalho) estiver diferente, atualiza apenas ela
         if len(vals) >= 1 and vals[0] != headers:
             ws_obj.update("1:1", [headers])
-            st.info(f" Cabeçalho da aba '{ws_obj.title}' atualizado.")
     except APIError as e:
-        # APENAS avisa sobre o erro, NUNCA apaga dados
         st.warning(f"⚠️ Erro ao verificar aba '{ws_obj.title}': {e}")
-        st.info("Os dados foram preservados. Verifique manualmente se necessário.")
 
 def ensure_worksheets(sh):
-    """Cria abas se não existirem, ou verifica cabeçalhos. NUNCA apaga dados."""
     wmap = get_worksheets_map(sh)
     targets = [
         (SHEET_USERS, HEADERS_USERS), (SHEET_CAD, HEADERS_CAD),
@@ -191,12 +176,10 @@ def ensure_worksheets(sh):
     ]
     for title, headers in targets:
         if title not in wmap:
-            # Cria nova aba apenas se não existir
             ws_obj = sh.add_worksheet(title=title, rows=2000, cols=max(12, len(headers)))
             ws_obj.append_row(headers)
             wmap[title] = ws_obj
         else:
-            # Verifica/atualiza cabeçalho da aba existente (SEM APAGAR DADOS)
             ensure_header(wmap[title], headers)
 
 _sh = sheets_health_check_or_stop()
@@ -311,16 +294,13 @@ def producao_update(producao_id, titulo, tipo, ano, veiculo, autores, doi):
     i = int(idx[0])
     w = ws(SHEET_PROD)
     row_number = i + 2
-    
     range_name = f"C{row_number}:H{row_number}"
     values = [[titulo.strip(), tipo, str(ano), veiculo.strip(), autores.strip(), doi.strip()]]
-    
     w.update(range_name, values)
     clear_cache()
     return True, "Produção atualizada com sucesso!"
 
 def producao_delete(producao_id):
-    """Exclui a produção e limpa as participações vinculadas."""
     df_prod = read_df(SHEET_PROD)
     idx_prod = df_prod.index[df_prod["id"] == producao_id]
     if len(idx_prod) == 0: return False, "Produção não encontrada."
@@ -337,7 +317,6 @@ def producao_delete(producao_id):
     i = int(idx_prod[0])
     w_prod = ws(SHEET_PROD)
     row_number = i + 2
-
     try:
         w_prod.delete_rows(row_number)
         clear_cache()
@@ -365,7 +344,7 @@ if "user"   not in st.session_state: st.session_state.user   = {}
 # LOGIN / CADASTRO
 # ---------------------------------------------------------
 if not st.session_state.logged:
-    tab_login, tab_cad = st.tabs([" Login", "📝 Cadastro"])
+    tab_login, tab_cad = st.tabs(["🔑 Login", "📝 Cadastro"])
     with tab_login:
         st.markdown("<div class='block-card'>", unsafe_allow_html=True)
         u = st.text_input("Usuário", key="login_user")
@@ -412,12 +391,18 @@ st.success(f"Logado como **{user.get('name','')}**  | perfil: **{role_of(user)}*
 # =========================================================
 if role_of(user) == "admin":
     st.subheader("🛠️ Painel do Coordenador")
-    df_users = read_df(SHEET_USERS); df_cad = read_df(SHEET_CAD)
-    df_prod = read_df(SHEET_PROD); df_part = read_df(SHEET_PART); df_vinc = read_df(SHEET_VINC)
+    
+    # Carregar dados
+    df_users = read_df(SHEET_USERS)
+    df_cad = read_df(SHEET_CAD)
+    df_prod = read_df(SHEET_PROD)
+    df_part = read_df(SHEET_PART)
+    df_vinc = read_df(SHEET_VINC)
 
+    # Criar abas
     t1, t2, t3, t4, t5, t6 = st.tabs([
         "👥 Usuários", "👤 Cadastros pendentes", "📚 Produções (geral)", 
-        "📊 Resumo por ano", "️ Histórico", "➕ Cadastrar Produção"
+        "📊 Resumo por ano", "⚙️ Histórico", "➕ Cadastrar Produção"
     ])
 
     with t1:
@@ -473,54 +458,46 @@ if role_of(user) == "admin":
 
     with t6:
         st.subheader("➕ Cadastrar nova produção para um docente")
-        
         docentes_df = df_users[df_users["role"].str.lower() == "docente"] if not df_users.empty else pd.DataFrame()
-        
         if docentes_df.empty:
-            st.info("Nenhum docente cadastrado no sistema ainda. Apove cadastros de docentes primeiro.")
+            st.info("Nenhum docente cadastrado no sistema ainda.")
         else:
             docente_options = {f"{row['name']} ({row['username']})": row['username'] for _, row in docentes_df.iterrows()}
-            selected_label = st.selectbox("Selecione o Docente destinatário", list(docente_options.keys()))
+            selected_label = st.selectbox("Selecione o Docente", list(docente_options.keys()))
             selected_username = docente_options[selected_label]
-
             st.divider()
             with st.form("admin_form_prod"):
                 c1, c2 = st.columns(2)
                 with c1:
-                    titulo = st.text_input("Título da produção", key="admin_prod_titulo")
-                    tipo   = st.selectbox("Tipo", TIPOS_PRODUCAO, key="admin_prod_tipo")
-                    ano    = st.selectbox("Ano", ANOS, key="admin_prod_ano")
+                    titulo = st.text_input("Título", key="admin_prod_titulo")
+                    tipo = st.selectbox("Tipo", TIPOS_PRODUCAO, key="admin_prod_tipo")
+                    ano = st.selectbox("Ano", ANOS, key="admin_prod_ano")
                 with c2:
-                    veiculo = st.text_input("Veículo/Periódico/Evento", key="admin_prod_veiculo")
-                    autores = st.text_input("Autores (separados por vírgula)", key="admin_prod_autores")
-                    doi     = st.text_input("DOI / Link (opcional)", key="admin_prod_doi")
-                
-                submitted = st.form_submit_button("💾 Cadastrar produção para o docente", use_container_width=True)
+                    veiculo = st.text_input("Veículo/Periódico", key="admin_prod_veiculo")
+                    autores = st.text_input("Autores", key="admin_prod_autores")
+                    doi = st.text_input("DOI (opcional)", key="admin_prod_doi")
+                submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
                 if submitted:
-                    if not titulo.strip():
-                        st.error("Título é obrigatório.")
+                    if not titulo.strip(): st.error("Título é obrigatório.")
                     else:
                         producao_submit(selected_username, titulo, tipo, ano, veiculo, autores, doi)
-                        st.success(f"Produção cadastrada com sucesso para {selected_label.split(' (')[0]}!")
+                        st.success(f"Produção cadastrada para {selected_label.split(' (')[0]}!")
                         st.rerun()
     st.divider()
 
 # =========================================================
-# PAINEL DOCENTE (APENAS EDIÇÃO E EXCLUSÃO)
+# PAINEL DOCENTE
 # =========================================================
 if role_of(user) == "docente":
     st.subheader(f"📚 Minhas produções — {user.get('name','')}")
-
     df_prod = read_df(SHEET_PROD)
     df_part = read_df(SHEET_PART)
     mine = df_prod[df_prod["docente_username"] == user["username"]] if not df_prod.empty else pd.DataFrame()
 
-    st.markdown("### 📋 Minhas produções cadastradas pelo coordenador")
-    
+    st.markdown("### 📋 Minhas produções")
     tem_producoes = False
     for ano in ANOS:
         subset = mine[mine["ano"].astype(str).str.strip() == ano] if not mine.empty else pd.DataFrame()
-        
         if not subset.empty:
             tem_producoes = True
             st.markdown(f"#### 📅 {ano}")
@@ -529,38 +506,29 @@ if role_of(user) == "docente":
                     st.write(f"**Veículo:** {row['veiculo']}")
                     st.write(f"**Autores:** {row['autores']}")
                     st.write(f"**DOI:** {row['doi'] or '—'}")
-                    
                     parts = df_part[df_part["producao_id"] == row["id"]] if not df_part.empty else pd.DataFrame()
                     if not parts.empty:
-                        st.write("**Participações registradas:**")
+                        st.write("**Participações:**")
                         st.dataframe(parts[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
-                    
                     col1, col2 = st.columns(2)
                     with col1:
                         if st.button("✏️ Editar", key=f"edit_{row['id']}", use_container_width=True):
-                            st.session_state['editing_prod_id'] = row['id']
-                            st.rerun()
+                            st.session_state['editing_prod_id'] = row['id']; st.rerun()
                     with col2:
                         if st.button("🗑️ Excluir", key=f"del_{row['id']}", use_container_width=True):
-                            st.session_state['deleting_prod_id'] = row['id']
-                            st.rerun()
+                            st.session_state['deleting_prod_id'] = row['id']; st.rerun()
     
-    if not tem_producoes:
-        st.info("Nenhuma produção cadastrada para você ainda. O coordenador precisa atribuir produções ao seu perfil.")
-    
+    if not tem_producoes: st.info("Nenhuma produção cadastrada.")
     st.divider()
 
+    # Edição
     if 'editing_prod_id' in st.session_state:
         pid = st.session_state['editing_prod_id']
         prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
         prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
-
         if prod_data is not None:
             st.markdown("### ✏️ Editar produção")
-            st.info(f"Editando: **{prod_data['titulo']}**")
-            
             with st.form(f"form_edit_{pid}"):
-                st.subheader("📝 Dados da produção")
                 c1, c2 = st.columns(2)
                 with c1:
                     titulo = st.text_input("Título", value=prod_data['titulo'], key=f"edit_titulo_{pid}")
@@ -570,96 +538,49 @@ if role_of(user) == "docente":
                     ano_idx = ANOS.index(ano_clean) if ano_clean in ANOS else 0
                     ano = st.selectbox("Ano", ANOS, index=ano_idx, key=f"edit_ano_{pid}")
                 with c2:
-                    veiculo = st.text_input("Veículo/Periódico/Evento", value=prod_data['veiculo'], key=f"edit_veiculo_{pid}")
+                    veiculo = st.text_input("Veículo", value=prod_data['veiculo'], key=f"edit_veiculo_{pid}")
                     autores = st.text_input("Autores", value=prod_data['autores'], key=f"edit_autores_{pid}")
-                    doi = st.text_input("DOI / Link", value=prod_data['doi'], key=f"edit_doi_{pid}")
-
+                    doi = st.text_input("DOI", value=prod_data['doi'], key=f"edit_doi_{pid}")
                 st.divider()
-                st.subheader(" Gerenciar participações")
-                
+                st.subheader("👥 Participações")
                 parts_current = df_part[df_part["producao_id"] == pid] if not df_part.empty else pd.DataFrame()
                 if not parts_current.empty:
-                    st.write("**Participações cadastradas:**")
                     st.dataframe(parts_current[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
-                else:
-                    st.info("Nenhuma participação cadastrada.")
-                
-                st.markdown("**Adicionar nova participação:**")
                 c3, c4 = st.columns(2)
-                with c3:
-                    tipo_p = st.selectbox("Tipo de participação", TIPOS_PARTICIPACAO, key=f"part_tipo_{pid}")
-                with c4:
-                    nome_p = st.text_input("Nome do participante", key=f"part_nome_{pid}")
-                vinc = st.text_input("Vínculo/instituição (opcional)", key=f"part_vinc_{pid}")
-                
+                with c3: tipo_p = st.selectbox("Tipo", TIPOS_PARTICIPACAO, key=f"part_tipo_{pid}")
+                with c4: nome_p = st.text_input("Nome", key=f"part_nome_{pid}")
+                vinc = st.text_input("Vínculo (opcional)", key=f"part_vinc_{pid}")
                 c_save1, c_save2, c_cancel = st.columns([1, 1, 1])
                 with c_save1:
-                    btn_add_part = st.form_submit_button("➕ Adicionar participação", use_container_width=True)
+                    if st.form_submit_button("➕ Add participação", use_container_width=True):
+                        if nome_p.strip(): participacao_submit(pid, tipo_p, nome_p, vinc); st.success("Adicionado!"); st.rerun()
                 with c_save2:
-                    btn_save_edit = st.form_submit_button(" Salvar alterações", use_container_width=True)
+                    if st.form_submit_button("💾 Salvar", use_container_width=True):
+                        if titulo.strip():
+                            ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, autores, doi)
+                            if ok: st.session_state.pop('editing_prod_id', None); st.success(msg); st.rerun()
                 with c_cancel:
-                    btn_cancel_edit = st.form_submit_button("❌ Cancelar", use_container_width=True)
-
-            if btn_add_part:
-                if not nome_p.strip():
-                    st.error("Informe o nome do participante.")
-                else:
-                    participacao_submit(pid, tipo_p, nome_p, vinc)
-                    st.success("Participação adicionada!")
-                    st.rerun()
-            
-            if btn_save_edit:
-                if not titulo.strip():
-                    st.error("Título é obrigatório.")
-                else:
-                    ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, autores, doi)
-                    if ok:
-                        st.session_state.pop('editing_prod_id', None)
-                        st.success(msg)
-                        st.rerun()
-                    else:
-                        st.error(msg)
-            
-            if btn_cancel_edit:
-                st.session_state.pop('editing_prod_id', None)
-                st.rerun()
-        else:
-            st.warning("Produção não encontrada. Ela pode ter sido excluída.")
-            if st.button("Voltar", key="btn_back_edit"):
-                st.session_state.pop('editing_prod_id', None)
-                st.rerun()
-        
+                    if st.form_submit_button("❌ Cancelar", use_container_width=True):
+                        st.session_state.pop('editing_prod_id', None); st.rerun()
         st.divider()
 
+    # Exclusão
     if 'deleting_prod_id' in st.session_state:
         pid = st.session_state['deleting_prod_id']
         prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
         prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
-
         if prod_data is not None:
-            st.markdown("---")
-            st.error(f"🗑️ **Excluir produção: {prod_data['titulo']}**")
-            st.warning("⚠️ **Atenção:** Tem certeza que deseja excluir esta produção? Esta ação não pode ser desfeita e apagará também as participações vinculadas.")
-            
+            st.error(f"🗑️ Excluir: {prod_data['titulo']}")
+            st.warning("⚠️ Esta ação não pode ser desfeita!")
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("Sim, excluir definitivamente", type="primary", use_container_width=True, key=f"btn_confirm_del_{pid}"):
+                if st.button("Sim, excluir", type="primary", use_container_width=True, key=f"btn_confirm_del_{pid}"):
                     ok, msg = producao_delete(pid)
-                    if ok:
-                        st.session_state.pop('deleting_prod_id', None)
-                        st.success(msg)
-                        st.rerun()
-                    else:
-                        st.error(msg)
+                    if ok: st.session_state.pop('deleting_prod_id', None); st.success(msg); st.rerun()
             with c2:
                 if st.button("Cancelar", use_container_width=True, key=f"btn_cancel_del_{pid}"):
-                    st.session_state.pop('deleting_prod_id', None)
-                    st.rerun()
-        else:
-            st.warning("Produção não encontrada. Ela pode já ter sido excluída.")
-            if st.button("Voltar", key="btn_back_del"):
-                st.session_state.pop('deleting_prod_id', None)
-                st.rerun()
+                    st.session_state.pop('deleting_prod_id', None); st.rerun()
+        st.divider()
 
 # =========================================================
 # PAINEL DISCENTE
@@ -667,55 +588,46 @@ if role_of(user) == "docente":
 if role_of(user) == "discente":
     st.subheader(f"🎓 Minha trajetória — {user.get('name','')}")
     orientador_nome = user.get("orientador", "")
-    st.info(f"Seu orientador no PPG: **{orientador_nome or 'não informado'}**")
-
-    df_prod = read_df(SHEET_PROD); df_vinc = read_df(SHEET_VINC); df_part = read_df(SHEET_PART)
-
+    st.info(f"Orientador: **{orientador_nome or 'não informado'}**")
+    df_prod = read_df(SHEET_PROD); df_vinc = read_df(SHEET_VINC)
     orientador_username = ""
     df_users = read_df(SHEET_USERS)
     if not df_users.empty and orientador_nome:
         m = df_users["name"].str.lower() == orientador_nome.lower()
         if m.any(): orientador_username = df_users[m].iloc[0]["username"]
-
     if orientador_username:
         prods_ori = df_prod[df_prod["docente_username"] == orientador_username] if not df_prod.empty else pd.DataFrame()
-        if prods_ori.empty: st.info("Seu orientador ainda não cadastrou produções.")
+        if prods_ori.empty: st.info("Orientador sem produções.")
         else:
             st.markdown("### 📚 Produções do orientador")
             meus_vinc = df_vinc[df_vinc["discente_username"] == user["username"]] if not df_vinc.empty else pd.DataFrame()
             ja_participei = set() if meus_vinc.empty else set(meus_vinc["producao_id"].tolist())
-
             for _, row in prods_ori.iterrows():
                 pid = row["id"]; ja = pid in ja_participei
                 with st.expander(f"{'✅' if ja else '⬜'} [{row['ano']}] {row['titulo']}"):
                     st.write(f"**Tipo:** {row['tipo']} | **Veículo:** {row['veiculo']}")
-                    st.write(f"**Autores:** {row['autores']}")
-                    if ja: st.success("Você já registrou sua participação nesta produção.")
+                    if ja: st.success("Você já registrou participação.")
                     else:
-                        if st.button("Registrar minha participação", key=f"vinc_{pid}"):
+                        if st.button("Registrar participação", key=f"vinc_{pid}"):
                             vinculo_submit(user["username"], orientador_username, pid)
-                            st.success("Participação registrada!"); st.rerun()
-    else: st.warning("Não foi possível localizar seu orientador no sistema.")
-
+                            st.success("Registrado!"); st.rerun()
     st.divider()
-    st.markdown("### 📋 Minhas participações registradas")
+    st.markdown("### 📋 Minhas participações")
     if not df_vinc.empty:
         mine = df_vinc[df_vinc["discente_username"] == user["username"]]
-        if mine.empty: st.info("Você ainda não registrou participações.")
-        else:
+        if not mine.empty:
             linhas = []
             for _, v in mine.iterrows():
                 prod = df_prod[df_prod["id"] == v["producao_id"]] if not df_prod.empty else pd.DataFrame()
                 if not prod.empty:
                     p = prod.iloc[0]
-                    linhas.append({"Ano": p["ano"], "Tipo": p["tipo"], "Título": p["titulo"], "Orientador": v["orientador_username"]})
+                    linhas.append({"Ano": p["ano"], "Tipo": p["tipo"], "Título": p["titulo"]})
             if linhas: st.dataframe(pd.DataFrame(linhas), use_container_width=True)
-            else: st.info("Sem participações.")
     else: st.info("Sem participações.")
 
 # =========================================================
 # LOGOUT
 # =========================================================
 st.divider()
-if st.button(" Sair", key="btn_logout"):
+if st.button("🚪 Sair", key="btn_logout"):
     st.session_state.logged = False; st.session_state.user = {}; st.rerun()
