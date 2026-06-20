@@ -1,4 +1,4 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v2 com Edição)
+# app.py — Sistema de Monitoramento de Produção do PPG (v3 com Edição e Exclusão)
 # Streamlit + Google Sheets + E-mails
 # Roles: admin, docente, discente
 # =========================================================
@@ -75,7 +75,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# E-MAIL & PASSWORD HASH (Mantidos iguais)
+# E-MAIL & PASSWORD HASH
 # ---------------------------------------------------------
 def send_email(to_email, subject, body):
     if "EMAIL" not in st.secrets: return False
@@ -132,27 +132,19 @@ def _retryable(status): return status in (429, 500, 503)
 
 @st.cache_resource
 def spreadsheet():
-    st.write("🔍 Conectando ao Google Sheets...")
     last_err = None
     for attempt in range(4):
         try:
-            sh = gclient().open_by_key(SPREADSHEET_ID)
-            st.write("✅ Conexão estabelecida!")
-            return sh
+            return gclient().open_by_key(SPREADSHEET_ID)
         except APIError as e:
             last_err = e
-            status, text = _extract_api_error_info(e)
-            st.error(f"❌ APIError (tentativa {attempt + 1}): Status {status}")
+            status, _ = _extract_api_error_info(e)
             if _retryable(status):
                 time.sleep(1.5 * (attempt + 1)); continue
-            break
+            raise
         except SpreadsheetNotFound:
-            st.error(f"❌ Planilha '{SPREADSHEET_ID}' não encontrada!"); raise
-        except PermissionError:
-            st.error("❌ Permissão negada. Verifique o compartilhamento da planilha."); raise
-        except Exception as e:
-            st.error(f" Erro: {type(e).__name__}: {e}"); raise
-    if last_err: raise last_err
+            raise
+    raise last_err
 
 def clear_cache(): st.cache_data.clear()
 
@@ -162,9 +154,7 @@ def sheets_health_check_or_stop():
         st.error(f"Falha ao acessar a planilha: {e}"); st.stop()
 
 def get_worksheets_map(sh):
-    try: return {w.title: w for w in sh.worksheets()}
-    except Exception as e:
-        st.error(f"Erro ao listar abas: {e}"); raise
+    return {w.title: w for w in sh.worksheets()}
 
 def ensure_header(ws_obj, headers):
     vals = ws_obj.get_all_values()
@@ -297,16 +287,42 @@ def producao_update(producao_id, titulo, tipo, ano, veiculo, autores, doi):
     if len(idx) == 0: return False, "Produção não encontrada."
     i = int(idx[0])
     w = ws(SHEET_PROD)
-    row_number = i + 2  # Linhas no Google Sheets começam em 1, +1 para o cabeçalho
+    row_number = i + 2
     
-    # Colunas: id(1), docente_username(2), titulo(3), tipo(4), ano(5), veiculo(6), autores(7), doi(8), created_at(9)
-    # Vamos atualizar de C a H (3 a 8)
     range_name = f"C{row_number}:H{row_number}"
     values = [[titulo.strip(), tipo, str(ano), veiculo.strip(), autores.strip(), doi.strip()]]
     
     w.update(range_name, values)
     clear_cache()
     return True, "Produção atualizada com sucesso!"
+
+def producao_delete(producao_id):
+    """Exclui a produção e limpa as participações vinculadas."""
+    df_prod = read_df(SHEET_PROD)
+    idx_prod = df_prod.index[df_prod["id"] == producao_id]
+    if len(idx_prod) == 0: return False, "Produção não encontrada."
+
+    # Excluir participações vinculadas primeiro (de trás para frente para não bagunçar as linhas)
+    df_part = read_df(SHEET_PART)
+    if not df_part.empty:
+        idx_parts = df_part.index[df_part["producao_id"] == producao_id]
+        if len(idx_parts) > 0:
+            w_part = ws(SHEET_PART)
+            for i in sorted(idx_parts, reverse=True):
+                row_number = int(i) + 2
+                w_part.delete_rows(row_number)
+
+    # Excluir a produção
+    i = int(idx_prod[0])
+    w_prod = ws(SHEET_PROD)
+    row_number = i + 2
+
+    try:
+        w_prod.delete_rows(row_number)
+        clear_cache()
+        return True, "Produção e participações vinculadas excluídas!"
+    except Exception as e:
+        return False, f"Erro ao excluir: {e}"
 
 def participacao_submit(producao_id, tipo, nome, vinculo=""):
     ws(SHEET_PART).append_row([str(uuid.uuid4()), producao_id, tipo, nome.strip(), vinculo.strip(),
@@ -328,7 +344,7 @@ if "user"   not in st.session_state: st.session_state.user   = {}
 # LOGIN / CADASTRO
 # ---------------------------------------------------------
 if not st.session_state.logged:
-    tab_login, tab_cad = st.tabs([" Login", "📝 Cadastro"])
+    tab_login, tab_cad = st.tabs(["🔑 Login", "📝 Cadastro"])
     with tab_login:
         st.markdown("<div class='block-card'>", unsafe_allow_html=True)
         u = st.text_input("Usuário", key="login_user")
@@ -374,7 +390,7 @@ st.success(f"Logado como **{user.get('name','')}**  | perfil: **{role_of(user)}*
 # PAINEL ADMIN
 # =========================================================
 if role_of(user) == "admin":
-    st.subheader("🛠️ Painel do Coordenador")
+    st.subheader("️ Painel do Coordenador")
     df_users = read_df(SHEET_USERS); df_cad = read_df(SHEET_CAD)
     df_prod = read_df(SHEET_PROD); df_part = read_df(SHEET_PART); df_vinc = read_df(SHEET_VINC)
 
@@ -433,7 +449,7 @@ if role_of(user) == "admin":
     st.divider()
 
 # =========================================================
-# PAINEL DOCENTE (COM EDIÇÃO E PARTICIPAÇÕES FLEXÍVEIS)
+# PAINEL DOCENTE (COM EDIÇÃO, EXCLUSÃO E PARTICIPAÇÕES)
 # =========================================================
 if role_of(user) == "docente":
     st.subheader(f"📚 Minhas produções — {user.get('name','')}")
@@ -443,7 +459,7 @@ if role_of(user) == "docente":
     mine = df_prod[df_prod["docente_username"] == user["username"]] if not df_prod.empty else pd.DataFrame()
 
     for ano in ANOS:
-        st.markdown(f"### 📅 {ano}")
+        st.markdown(f"###  {ano}")
         subset = mine[mine["ano"].astype(str) == ano] if not mine.empty else pd.DataFrame()
         if not subset.empty:
             for _, row in subset.iterrows():
@@ -460,7 +476,7 @@ if role_of(user) == "docente":
                         st.info("Nenhuma participação registrada ainda.")
 
                     # Botões de ação para esta produção específica
-                    col1, col2 = st.columns(2)
+                    col1, col2, col3 = st.columns(3)
                     with col1:
                         if st.button("➕ Adicionar participação", key=f"add_part_{row['id']}"):
                             st.session_state['adding_part_to'] = row['id']
@@ -468,6 +484,10 @@ if role_of(user) == "docente":
                     with col2:
                         if st.button("✏️ Editar produção", key=f"edit_{row['id']}"):
                             st.session_state['editing_prod_id'] = row['id']
+                            st.rerun()
+                    with col3:
+                        if st.button("🗑️ Excluir produção", key=f"del_{row['id']}"):
+                            st.session_state['deleting_prod_id'] = row['id']
                             st.rerun()
         else:
             st.info(f"Nenhuma produção em {ano}.")
@@ -490,15 +510,15 @@ if role_of(user) == "docente":
         if submitted:
             if not titulo.strip(): st.error("Título é obrigatório.")
             else:
-                pid = producao_submit(user["username"], titulo, tipo, ano, veiculo, autores, doi)
+                producao_submit(user["username"], titulo, tipo, ano, veiculo, autores, doi)
                 st.success("Produção cadastrada!")
                 st.rerun()
 
-    # Formulário para ADICIONAR PARTICIPAÇÃO (acionado pelo botão dentro do expander)
+    # Formulário para ADICIONAR PARTICIPAÇÃO
     if 'adding_part_to' in st.session_state:
         pid = st.session_state['adding_part_to']
         st.markdown("---")
-        st.subheader(f" Adicionar participação na produção selecionada")
+        st.subheader(f"➕ Adicionar participação na produção selecionada")
         with st.form(f"form_part_{pid}"):
             tipo_p = st.selectbox("Tipo de participação", TIPOS_PARTICIPACAO, key=f"part_tipo_{pid}")
             nome_p = st.text_input("Nome do participante", key=f"part_nome_{pid}")
@@ -514,7 +534,7 @@ if role_of(user) == "docente":
             st.session_state.pop('adding_part_to', None)
             st.rerun()
 
-    # Formulário para EDITAR produção (acionado pelo botão dentro do expander)
+    # Formulário para EDITAR produção
     if 'editing_prod_id' in st.session_state:
         pid = st.session_state['editing_prod_id']
         prod_data = df_prod[df_prod["id"] == pid].iloc[0] if not df_prod.empty else None
@@ -547,6 +567,31 @@ if role_of(user) == "docente":
             if st.button("Cancelar edição", key=f"btn_cancel_edit_{pid}"):
                 st.session_state.pop('editing_prod_id', None)
                 st.rerun()
+
+    # Formulário para EXCLUIR produção (Confirmação)
+    if 'deleting_prod_id' in st.session_state:
+        pid = st.session_state['deleting_prod_id']
+        prod_data = df_prod[df_prod["id"] == pid].iloc[0] if not df_prod.empty else None
+
+        if prod_data is not None:
+            st.markdown("---")
+            st.subheader(f"🗑️ Excluir produção: {prod_data['titulo']}")
+            st.warning("⚠️ **Atenção:** Tem certeza que deseja excluir esta produção? Esta ação não pode ser desfeita e apagará também as participações vinculadas.")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Sim, excluir definitivamente", type="primary", use_container_width=True, key=f"btn_confirm_del_{pid}"):
+                    ok, msg = producao_delete(pid)
+                    if ok:
+                        st.session_state.pop('deleting_prod_id', None)
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            with c2:
+                if st.button("Cancelar", use_container_width=True, key=f"btn_cancel_del_{pid}"):
+                    st.session_state.pop('deleting_prod_id', None)
+                    st.rerun()
 
 # =========================================================
 # PAINEL DISCENTE
@@ -585,7 +630,7 @@ if role_of(user) == "discente":
     else: st.warning("Não foi possível localizar seu orientador no sistema.")
 
     st.divider()
-    st.markdown("### 📋 Minhas participações registradas")
+    st.markdown("###  Minhas participações registradas")
     if not df_vinc.empty:
         mine = df_vinc[df_vinc["discente_username"] == user["username"]]
         if mine.empty: st.info("Você ainda não registrou participações.")
