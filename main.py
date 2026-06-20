@@ -1,7 +1,9 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v4.2)
+# app.py — Sistema de Monitoramento de Produção do PPG (v4.3 - SEGURO)
 # Streamlit + Google Sheets + E-mails
 # Roles: admin (coordenador), docente, discente
 # =========================================================
+# ⚠️ ATENÇÃO: Esta versão PRESERVA todos os dados existentes.
+# A função ensure_header NUNCA apaga dados, apenas verifica/atualiza cabeçalhos.
 
 import os, time, base64, uuid, hashlib, hmac, smtplib
 from email.message import EmailMessage
@@ -114,7 +116,7 @@ def verify_password(password, stored):
         return False
 
 # ---------------------------------------------------------
-# GOOGLE SHEETS
+# GOOGLE SHEETS - VERSÃO SEGURA (NUNCA APAGA DADOS)
 # ---------------------------------------------------------
 @st.cache_resource
 def gclient():
@@ -156,26 +158,31 @@ def sheets_health_check_or_stop():
 def get_worksheets_map(sh):
     return {w.title: w for w in sh.worksheets()}
 
+# ✅ FUNÇÃO SEGURA: NUNCA APAGA DADOS
 def ensure_header(ws_obj, headers):
-    """Garante que o cabeçalho está correto. Se falhar, recria a aba."""
+    """
+    Garante que o cabeçalho está correto.
+    ⚠️ NUNCA apaga dados existentes. Apenas:
+    - Adiciona cabeçalho se a aba estiver vazia
+    - Atualiza a linha 1 se o cabeçalho estiver diferente
+    """
     try:
         vals = ws_obj.get_all_values()
         if not vals:
+            # Aba completamente vazia - adiciona apenas o cabeçalho
             ws_obj.append_row(headers)
             return
-        if len(vals) == 1 and vals[0] != headers:
+        # Se a primeira linha (cabeçalho) estiver diferente, atualiza apenas ela
+        if len(vals) >= 1 and vals[0] != headers:
             ws_obj.update("1:1", [headers])
+            st.info(f" Cabeçalho da aba '{ws_obj.title}' atualizado.")
     except APIError as e:
-        st.warning(f"⚠️ Erro ao ler aba '{ws_obj.title}': {e}. Tentando recriar...")
-        try:
-            ws_obj.clear()
-            ws_obj.append_row(headers)
-            st.success(f"✅ Aba '{ws_obj.title}' recriada com sucesso!")
-        except Exception as e2:
-            st.error(f"❌ Falha ao recriar aba '{ws_obj.title}': {e2}")
-            raise
+        # APENAS avisa sobre o erro, NUNCA apaga dados
+        st.warning(f"⚠️ Erro ao verificar aba '{ws_obj.title}': {e}")
+        st.info("Os dados foram preservados. Verifique manualmente se necessário.")
 
 def ensure_worksheets(sh):
+    """Cria abas se não existirem, ou verifica cabeçalhos. NUNCA apaga dados."""
     wmap = get_worksheets_map(sh)
     targets = [
         (SHEET_USERS, HEADERS_USERS), (SHEET_CAD, HEADERS_CAD),
@@ -183,19 +190,14 @@ def ensure_worksheets(sh):
         (SHEET_VINC, HEADERS_VINC),
     ]
     for title, headers in targets:
-        st.write(f" Verificando aba '{title}'...")
         if title not in wmap:
-            st.write(f"➕ Criando aba '{title}'...")
+            # Cria nova aba apenas se não existir
             ws_obj = sh.add_worksheet(title=title, rows=2000, cols=max(12, len(headers)))
             ws_obj.append_row(headers)
             wmap[title] = ws_obj
-            st.write(f"✅ Aba '{title}' criada!")
         else:
-            st.write(f" Atualizando cabeçalho da aba '{title}'...")
+            # Verifica/atualiza cabeçalho da aba existente (SEM APAGAR DADOS)
             ensure_header(wmap[title], headers)
-            st.write(f"✅ Aba '{title}' verificada!")
-    
-    st.write("✅ Todas as abas estão prontas!")
 
 _sh = sheets_health_check_or_stop()
 ensure_worksheets(_sh)
@@ -415,7 +417,7 @@ if role_of(user) == "admin":
 
     t1, t2, t3, t4, t5, t6 = st.tabs([
         "👥 Usuários", "👤 Cadastros pendentes", "📚 Produções (geral)", 
-        "📊 Resumo por ano", "⚙️ Histórico", "➕ Cadastrar Produção"
+        "📊 Resumo por ano", "️ Histórico", "➕ Cadastrar Produção"
     ])
 
     with t1:
@@ -573,7 +575,7 @@ if role_of(user) == "docente":
                     doi = st.text_input("DOI / Link", value=prod_data['doi'], key=f"edit_doi_{pid}")
 
                 st.divider()
-                st.subheader("👥 Gerenciar participações")
+                st.subheader(" Gerenciar participações")
                 
                 parts_current = df_part[df_part["producao_id"] == pid] if not df_part.empty else pd.DataFrame()
                 if not parts_current.empty:
@@ -594,9 +596,9 @@ if role_of(user) == "docente":
                 with c_save1:
                     btn_add_part = st.form_submit_button("➕ Adicionar participação", use_container_width=True)
                 with c_save2:
-                    btn_save_edit = st.form_submit_button("💾 Salvar alterações", use_container_width=True)
+                    btn_save_edit = st.form_submit_button(" Salvar alterações", use_container_width=True)
                 with c_cancel:
-                    btn_cancel_edit = st.form_submit_button(" Cancelar", use_container_width=True)
+                    btn_cancel_edit = st.form_submit_button("❌ Cancelar", use_container_width=True)
 
             if btn_add_part:
                 if not nome_p.strip():
@@ -685,7 +687,7 @@ if role_of(user) == "discente":
 
             for _, row in prods_ori.iterrows():
                 pid = row["id"]; ja = pid in ja_participei
-                with st.expander(f"{'✅' if ja else ''} [{row['ano']}] {row['titulo']}"):
+                with st.expander(f"{'✅' if ja else '⬜'} [{row['ano']}] {row['titulo']}"):
                     st.write(f"**Tipo:** {row['tipo']} | **Veículo:** {row['veiculo']}")
                     st.write(f"**Autores:** {row['autores']}")
                     if ja: st.success("Você já registrou sua participação nesta produção.")
@@ -715,5 +717,5 @@ if role_of(user) == "discente":
 # LOGOUT
 # =========================================================
 st.divider()
-if st.button("🚪 Sair", key="btn_logout"):
+if st.button(" Sair", key="btn_logout"):
     st.session_state.logged = False; st.session_state.user = {}; st.rerun()
