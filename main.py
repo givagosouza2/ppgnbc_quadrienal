@@ -1,6 +1,6 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v3.2 - Layout melhorado)
+# app.py — Sistema de Monitoramento de Produção do PPG (v4.1 - Correção filtro de ano)
 # Streamlit + Google Sheets + E-mails
-# Roles: admin, docente, discente
+# Roles: admin (coordenador), docente, discente
 # =========================================================
 
 import os, time, base64, uuid, hashlib, hmac, smtplib
@@ -302,7 +302,6 @@ def producao_delete(producao_id):
     idx_prod = df_prod.index[df_prod["id"] == producao_id]
     if len(idx_prod) == 0: return False, "Produção não encontrada."
 
-    # Excluir participações vinculadas primeiro (de trás para frente para não bagunçar as linhas)
     df_part = read_df(SHEET_PART)
     if not df_part.empty:
         idx_parts = df_part.index[df_part["producao_id"] == producao_id]
@@ -312,7 +311,6 @@ def producao_delete(producao_id):
                 row_number = int(i) + 2
                 w_part.delete_rows(row_number)
 
-    # Excluir a produção
     i = int(idx_prod[0])
     w_prod = ws(SHEET_PROD)
     row_number = i + 2
@@ -387,14 +385,17 @@ user = st.session_state.user
 st.success(f"Logado como **{user.get('name','')}**  | perfil: **{role_of(user)}**")
 
 # =========================================================
-# PAINEL ADMIN
+# PAINEL ADMIN (COORDENADOR)
 # =========================================================
 if role_of(user) == "admin":
-    st.subheader("🛠️ Painel do Coordenador")
+    st.subheader("️ Painel do Coordenador")
     df_users = read_df(SHEET_USERS); df_cad = read_df(SHEET_CAD)
     df_prod = read_df(SHEET_PROD); df_part = read_df(SHEET_PART); df_vinc = read_df(SHEET_VINC)
 
-    t1, t2, t3, t4, t5 = st.tabs([" Usuários", "👤 Cadastros pendentes", "📚 Produções (geral)", "📊 Resumo por ano", "⚙️ Histórico"])
+    t1, t2, t3, t4, t5, t6 = st.tabs([
+        "👥 Usuários", " Cadastros pendentes", "📚 Produções (geral)", 
+        "📊 Resumo por ano", "⚙️ Histórico", " Cadastrar Produção"
+    ])
 
     with t1:
         if df_users.empty: st.info("Sem usuários.")
@@ -433,7 +434,8 @@ if role_of(user) == "admin":
         else:
             for ano in ANOS:
                 st.markdown(f"### 📅 {ano}")
-                subset = df_prod[df_prod["ano"].astype(str) == ano]
+                # CORREÇÃO: .str.strip() para remover espaços extras
+                subset = df_prod[df_prod["ano"].astype(str).str.strip() == ano]
                 if subset.empty: st.write("— Nenhuma produção registrada —")
                 else:
                     st.write(f"Total: {len(subset)}")
@@ -446,10 +448,44 @@ if role_of(user) == "admin":
         hist = df_cad[df_cad.get("status","").isin(["Aprovado","Rejeitado"])] if not df_cad.empty else pd.DataFrame()
         if hist.empty: st.info("Sem histórico.")
         else: st.dataframe(hist, use_container_width=True)
+
+    # NOVA ABA: Cadastrar Produção (Exclusiva do Coordenador)
+    with t6:
+        st.subheader("➕ Cadastrar nova produção para um docente")
+        
+        docentes_df = df_users[df_users["role"].str.lower() == "docente"] if not df_users.empty else pd.DataFrame()
+        
+        if docentes_df.empty:
+            st.info("Nenhum docente cadastrado no sistema ainda. Apove cadastros de docentes primeiro.")
+        else:
+            docente_options = {f"{row['name']} ({row['username']})": row['username'] for _, row in docentes_df.iterrows()}
+            selected_label = st.selectbox("Selecione o Docente destinatário", list(docente_options.keys()))
+            selected_username = docente_options[selected_label]
+
+            st.divider()
+            with st.form("admin_form_prod"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    titulo = st.text_input("Título da produção", key="admin_prod_titulo")
+                    tipo   = st.selectbox("Tipo", TIPOS_PRODUCAO, key="admin_prod_tipo")
+                    ano    = st.selectbox("Ano", ANOS, key="admin_prod_ano")
+                with c2:
+                    veiculo = st.text_input("Veículo/Periódico/Evento", key="admin_prod_veiculo")
+                    autores = st.text_input("Autores (separados por vírgula)", key="admin_prod_autores")
+                    doi     = st.text_input("DOI / Link (opcional)", key="admin_prod_doi")
+                
+                submitted = st.form_submit_button("💾 Cadastrar produção para o docente", use_container_width=True)
+                if submitted:
+                    if not titulo.strip():
+                        st.error("Título é obrigatório.")
+                    else:
+                        producao_submit(selected_username, titulo, tipo, ano, veiculo, autores, doi)
+                        st.success(f"Produção cadastrada com sucesso para {selected_label.split(' (')[0]}!")
+                        st.rerun()
     st.divider()
 
 # =========================================================
-# PAINEL DOCENTE (LAYOUT REORGANIZADO)
+# PAINEL DOCENTE (APENAS EDIÇÃO E EXCLUSÃO)
 # =========================================================
 if role_of(user) == "docente":
     st.subheader(f"📚 Minhas produções — {user.get('name','')}")
@@ -458,12 +494,14 @@ if role_of(user) == "docente":
     df_part = read_df(SHEET_PART)
     mine = df_prod[df_prod["docente_username"] == user["username"]] if not df_prod.empty else pd.DataFrame()
 
-    # 1️⃣ PRIMEIRO: Lista de produções por ano (somente visualização)
-    st.markdown("### 📋 Minhas produções cadastradas")
+    # 1️⃣ Lista de produções por ano (somente visualização + botões de ação)
+    st.markdown("###  Minhas produções cadastradas pelo coordenador")
     
     tem_producoes = False
     for ano in ANOS:
-        subset = mine[mine["ano"].astype(str) == ano] if not mine.empty else pd.DataFrame()
+        # CORREÇÃO: .str.strip() para remover espaços extras da planilha
+        subset = mine[mine["ano"].astype(str).str.strip() == ano] if not mine.empty else pd.DataFrame()
+        
         if not subset.empty:
             tem_producoes = True
             st.markdown(f"#### 📅 {ano}")
@@ -490,11 +528,11 @@ if role_of(user) == "docente":
                             st.rerun()
     
     if not tem_producoes:
-        st.info("Nenhuma produção cadastrada ainda.")
+        st.info("Nenhuma produção cadastrada para você ainda. O coordenador precisa atribuir produções ao seu perfil.")
     
     st.divider()
 
-    # 2️⃣ SEGUNDO: Formulário de edição (se houver produção selecionada)
+    # 2️⃣ Formulário de edição (se houver produção selecionada)
     if 'editing_prod_id' in st.session_state:
         pid = st.session_state['editing_prod_id']
         prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
@@ -511,7 +549,9 @@ if role_of(user) == "docente":
                     titulo = st.text_input("Título", value=prod_data['titulo'], key=f"edit_titulo_{pid}")
                     tipo_idx = TIPOS_PRODUCAO.index(prod_data['tipo']) if prod_data['tipo'] in TIPOS_PRODUCAO else 0
                     tipo = st.selectbox("Tipo", TIPOS_PRODUCAO, index=tipo_idx, key=f"edit_tipo_{pid}")
-                    ano_idx = ANOS.index(str(prod_data['ano'])) if str(prod_data['ano']) in ANOS else 0
+                    # CORREÇÃO: strip() para evitar erro no index
+                    ano_clean = str(prod_data['ano']).strip()
+                    ano_idx = ANOS.index(ano_clean) if ano_clean in ANOS else 0
                     ano = st.selectbox("Ano", ANOS, index=ano_idx, key=f"edit_ano_{pid}")
                 with c2:
                     veiculo = st.text_input("Veículo/Periódico/Evento", value=prod_data['veiculo'], key=f"edit_veiculo_{pid}")
@@ -521,7 +561,6 @@ if role_of(user) == "docente":
                 st.divider()
                 st.subheader("👥 Gerenciar participações")
                 
-                # Mostrar participações atuais
                 parts_current = df_part[df_part["producao_id"] == pid] if not df_part.empty else pd.DataFrame()
                 if not parts_current.empty:
                     st.write("**Participações cadastradas:**")
@@ -529,7 +568,6 @@ if role_of(user) == "docente":
                 else:
                     st.info("Nenhuma participação cadastrada.")
                 
-                # Formulário para adicionar nova participação
                 st.markdown("**Adicionar nova participação:**")
                 c3, c4 = st.columns(2)
                 with c3:
@@ -542,11 +580,10 @@ if role_of(user) == "docente":
                 with c_save1:
                     btn_add_part = st.form_submit_button("➕ Adicionar participação", use_container_width=True)
                 with c_save2:
-                    btn_save_edit = st.form_submit_button("💾 Salvar alterações da produção", use_container_width=True)
+                    btn_save_edit = st.form_submit_button("💾 Salvar alterações", use_container_width=True)
                 with c_cancel:
-                    btn_cancel_edit = st.form_submit_button("❌ Cancelar", use_container_width=True)
+                    btn_cancel_edit = st.form_submit_button(" Cancelar", use_container_width=True)
 
-            # Processar adição de participação
             if btn_add_part:
                 if not nome_p.strip():
                     st.error("Informe o nome do participante.")
@@ -555,7 +592,6 @@ if role_of(user) == "docente":
                     st.success("Participação adicionada!")
                     st.rerun()
             
-            # Processar salvamento da edição
             if btn_save_edit:
                 if not titulo.strip():
                     st.error("Título é obrigatório.")
@@ -568,7 +604,6 @@ if role_of(user) == "docente":
                     else:
                         st.error(msg)
             
-            # Processar cancelamento
             if btn_cancel_edit:
                 st.session_state.pop('editing_prod_id', None)
                 st.rerun()
@@ -580,28 +615,7 @@ if role_of(user) == "docente":
         
         st.divider()
 
-    # 3️⃣ TERCEIRO: Formulário de cadastro de nova produção
-    st.markdown("### ➕ Cadastrar nova produção")
-    with st.form("form_prod"):
-        c1, c2 = st.columns(2)
-        with c1:
-            titulo = st.text_input("Título da produção", key="prod_titulo")
-            tipo   = st.selectbox("Tipo", TIPOS_PRODUCAO, key="prod_tipo")
-            ano    = st.selectbox("Ano", ANOS, key="prod_ano")
-        with c2:
-            veiculo = st.text_input("Veículo/Periódico/Evento", key="prod_veiculo")
-            autores = st.text_input("Autores (separados por vírgula)", key="prod_autores")
-            doi     = st.text_input("DOI / Link (opcional)", key="prod_doi")
-        submitted = st.form_submit_button("💾 Salvar nova produção", use_container_width=True)
-        if submitted:
-            if not titulo.strip():
-                st.error("Título é obrigatório.")
-            else:
-                producao_submit(user["username"], titulo, tipo, ano, veiculo, autores, doi)
-                st.success("Produção cadastrada com sucesso!")
-                st.rerun()
-
-    # Formulário para EXCLUIR produção (Confirmação) - aparece em modal
+    # Formulário para EXCLUIR produção (Confirmação)
     if 'deleting_prod_id' in st.session_state:
         pid = st.session_state['deleting_prod_id']
         prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
