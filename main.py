@@ -1,5 +1,6 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v4.8.2 - Corrigido)
+# app.py — Sistema de Monitoramento de Produção do PPG (v4.8.3 - Final)
 # Streamlit + Google Sheets + E-mails
+# Roles: admin (coordenador), docente, discente
 # =========================================================
 
 import os, time, base64, uuid, hashlib, hmac, smtplib
@@ -119,7 +120,7 @@ def verify_password(password, stored):
         return False
 
 # ---------------------------------------------------------
-# GOOGLE SHEETS (DEFENSIVO)
+# GOOGLE SHEETS
 # ---------------------------------------------------------
 @st.cache_resource
 def gclient():
@@ -163,7 +164,8 @@ def get_worksheets_map(sh):
     return {w.title: w for w in sh.worksheets()}
 
 def ensure_header(ws_obj, headers):
-    """Garante que o cabeçalho está correto SEM APAGAR DADOS."""
+    """Garante que o cabeçalho está correto SEM APAGAR DADOS.
+    Adiciona colunas faltantes no final se necessário."""
     try:
         vals = ws_obj.get_all_values()
         if not vals:
@@ -268,7 +270,7 @@ def get_docente_username_by_name(nome):
     return None
 
 # ---------------------------------------------------------
-# FUNÇÕES DE CO-AUTORIA (DEFENSIVAS)
+# FUNÇÕES DE CO-AUTORIA
 # ---------------------------------------------------------
 def verificar_duplicacao(doi, titulo):
     df = read_df(SHEET_PROD)
@@ -296,10 +298,12 @@ def adicionar_co_autor(producao_id, username):
     if len(idx) == 0:
         return False, "Produção não encontrada"
     
-    if "co_autores" not in df.columns:
-        return False, "Sistema ainda não suporta co-autoria. Aguarde atualização."
-    
     i = int(idx[0])
+    
+    # Se a coluna não existir, retorna erro
+    if "co_autores" not in df.columns:
+        return False, "Coluna co_autores não existe na planilha."
+    
     co_autores_atuais = str(df.loc[i, "co_autores"]).strip() if pd.notna(df.loc[i, "co_autores"]) else ""
     
     if username in co_autores_atuais.split(","):
@@ -321,20 +325,24 @@ def adicionar_co_autor(producao_id, username):
     return False, "Erro ao adicionar co-autor"
 
 def get_minhas_producoes(username):
+    """Retorna produções onde o usuário é autor principal OU co-autor."""
     df = read_df(SHEET_PROD)
     if df.empty:
         return pd.DataFrame()
     
+    # Autor principal
     principal = df[df["docente_username"] == username].copy()
     if not principal.empty:
         principal["tipo_autoria"] = "principal"
     
+    # Co-autor (apenas se a coluna existir)
     coautor = pd.DataFrame()
     if "co_autores" in df.columns:
         coautor = df[df["co_autores"].str.contains(username, na=False)].copy()
         if not coautor.empty:
             coautor["tipo_autoria"] = "coautor"
     
+    # Combina e remove duplicatas
     if not principal.empty and not coautor.empty:
         todas = pd.concat([principal, coautor]).drop_duplicates(subset=["id"])
     elif not principal.empty:
@@ -402,15 +410,9 @@ def cadastro_review(req_id, action, admin_username, reason=""):
 
 def producao_submit(docente_username, titulo, tipo, ano, veiculo, autores, doi, descricao="", co_autores=""):
     prod_id = str(uuid.uuid4())
-    df = read_df(SHEET_PROD)
-    if "co_autores" in df.columns:
-        ws(SHEET_PROD).append_row([prod_id, docente_username, titulo.strip(), tipo, str(ano),
-            veiculo.strip(), autores.strip(), doi.strip(), descricao.strip(), co_autores.strip(),
-            datetime.utcnow().isoformat(timespec="seconds")])
-    else:
-        ws(SHEET_PROD).append_row([prod_id, docente_username, titulo.strip(), tipo, str(ano),
-            veiculo.strip(), autores.strip(), doi.strip(), descricao.strip(),
-            datetime.utcnow().isoformat(timespec="seconds")])
+    ws(SHEET_PROD).append_row([prod_id, docente_username, titulo.strip(), tipo, str(ano),
+        veiculo.strip(), autores.strip(), doi.strip(), descricao.strip(), co_autores.strip(),
+        datetime.utcnow().isoformat(timespec="seconds")])
     clear_cache()
     return prod_id
 
@@ -422,14 +424,10 @@ def producao_update(producao_id, titulo, tipo, ano, veiculo, autores, doi, descr
     w = ws(SHEET_PROD)
     row_number = i + 2
     
-    if "co_autores" in df.columns:
-        range_name = f"C{row_number}:J{row_number}"
-        values = [[titulo.strip(), tipo, str(ano), veiculo.strip(), autores.strip(), 
-                   doi.strip(), descricao.strip(), co_autores.strip()]]
-    else:
-        range_name = f"C{row_number}:I{row_number}"
-        values = [[titulo.strip(), tipo, str(ano), veiculo.strip(), autores.strip(), 
-                   doi.strip(), descricao.strip()]]
+    # C=titulo, D=tipo, E=ano, F=veiculo, G=autores, H=doi, I=descricao, J=co_autores
+    range_name = f"C{row_number}:J{row_number}"
+    values = [[titulo.strip(), tipo, str(ano), veiculo.strip(), autores.strip(), 
+               doi.strip(), descricao.strip(), co_autores.strip()]]
     
     w.update(range_name, values)
     clear_cache()
@@ -479,7 +477,7 @@ if "user"   not in st.session_state: st.session_state.user   = {}
 # LOGIN / CADASTRO
 # ---------------------------------------------------------
 if not st.session_state.logged:
-    tab_login, tab_cad = st.tabs(["🔑 Login", "📝 Cadastro"])
+    tab_login, tab_cad = st.tabs(["🔑 Login", " Cadastro"])
     with tab_login:
         st.markdown("<div class='block-card'>", unsafe_allow_html=True)
         u = st.text_input("Usuário", key="login_user")
@@ -614,27 +612,26 @@ if user_role == "admin":
                     doi = st.text_input("DOI (opcional)", key="admin_prod_doi")
                 
                 descricao = st.text_area(
-                    "📝 Descrição qualitativa (opcional)",
+                    " Descrição qualitativa (opcional)",
                     placeholder="Descreva o contexto, relevância, impacto...",
                     height=100,
                     key="admin_prod_descricao"
                 )
                 
-                co_autores_usernames = ""
-                if "co_autores" in df_prod.columns:
-                    st.markdown("** Co-autores do PPG (opcional)**")
-                    docentes_list = listar_docentes()
-                    docentes_list = [d for d in docentes_list if d != selected_label.split(" (")[0]]
-                    co_autores_selecionados = st.multiselect(
-                        "Selecione outros docentes do PPG que são co-autores:",
-                        docentes_list,
-                        key="admin_prod_coautores"
-                    )
-                    co_autores_usernames = ",".join([
-                        get_docente_username_by_name(nome) 
-                        for nome in co_autores_selecionados 
-                        if get_docente_username_by_name(nome)
-                    ])
+                # ✅ SEMPRE VISÍVEL (sem verificação condicional)
+                st.markdown("**👥 Co-autores do PPG (opcional)**")
+                docentes_list = listar_docentes()
+                docentes_list = [d for d in docentes_list if d != selected_label.split(" (")[0]]
+                co_autores_selecionados = st.multiselect(
+                    "Selecione outros docentes do PPG que são co-autores:",
+                    docentes_list,
+                    key="admin_prod_coautores"
+                )
+                co_autores_usernames = ",".join([
+                    get_docente_username_by_name(nome) 
+                    for nome in co_autores_selecionados 
+                    if get_docente_username_by_name(nome)
+                ])
                 
                 submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
                 if submitted:
@@ -647,14 +644,14 @@ if user_role == "admin":
     st.divider()
 
 # =========================================================
-# PAINEL DOCENTE (CORRIGIDO - df_part agora é carregado)
+# PAINEL DOCENTE
 # =========================================================
 elif user_role == "docente":
     st.subheader(f"📚 Minhas produções — {user.get('name','')}")
     
-    # ✅ CORREÇÃO: carregar df_part aqui
+    # ✅ Carregar df_part (corrigido)
     df_prod = read_df(SHEET_PROD)
-    df_part = read_df(SHEET_PART)  # <-- ESTA LINHA ESTAVA FALTANDO!
+    df_part = read_df(SHEET_PART)
     
     todas_producoes = get_minhas_producoes(user_username)
     
@@ -676,7 +673,7 @@ elif user_role == "docente":
                                        unsafe_allow_html=True)
                         else:
                             autor_principal_nome = get_nome_autor_principal(row["docente_username"])
-                            st.markdown(f'<span class="coautor-badge">👥 Co-autor (cadastrado por {autor_principal_nome})</span>', 
+                            st.markdown(f'<span class="coautor-badge"> Co-autor (cadastrado por {autor_principal_nome})</span>', 
                                        unsafe_allow_html=True)
                         
                         st.write(f"**Veículo:** {row['veiculo']}")
@@ -688,7 +685,6 @@ elif user_role == "docente":
                             st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{descricao_text}</div>', 
                                        unsafe_allow_html=True)
                         
-                        # ✅ Agora df_part está definido
                         parts = df_part[df_part["producao_id"] == row["id"]] if not df_part.empty else pd.DataFrame()
                         if not parts.empty:
                             st.write("**Participações:**")
@@ -697,7 +693,7 @@ elif user_role == "docente":
                         if eh_principal:
                             col1, col2 = st.columns(2)
                             with col1:
-                                if st.button("✏️ Editar", key=f"edit_{row['id']}", use_container_width=True):
+                                if st.button("️ Editar", key=f"edit_{row['id']}", use_container_width=True):
                                     st.session_state['editing_prod_id'] = row['id']; st.rerun()
                             with col2:
                                 if st.button("🗑️ Excluir", key=f"del_{row['id']}", use_container_width=True):
@@ -727,21 +723,20 @@ elif user_role == "docente":
             key="prod_descricao"
         )
         
-        co_autores_usernames = ""
-        if "co_autores" in df_prod.columns:
-            st.markdown("**👥 Co-autores do PPG (opcional)**")
-            docentes_list = listar_docentes()
-            docentes_list = [d for d in docentes_list if d != user.get('name', '')]
-            co_autores_selecionados = st.multiselect(
-                "Selecione outros docentes do PPG que são co-autores:",
-                docentes_list,
-                key="prod_coautores"
-            )
-            co_autores_usernames = ",".join([
-                get_docente_username_by_name(nome) 
-                for nome in co_autores_selecionados 
-                if get_docente_username_by_name(nome)
-            ])
+        # ✅ SEMPRE VISÍVEL (sem verificação condicional)
+        st.markdown("**👥 Co-autores do PPG (opcional)**")
+        docentes_list = listar_docentes()
+        docentes_list = [d for d in docentes_list if d != user.get('name', '')]
+        co_autores_selecionados = st.multiselect(
+            "Selecione outros docentes do PPG que são co-autores:",
+            docentes_list,
+            key="prod_coautores"
+        )
+        co_autores_usernames = ",".join([
+            get_docente_username_by_name(nome) 
+            for nome in co_autores_selecionados 
+            if get_docente_username_by_name(nome)
+        ])
         
         submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
         
@@ -777,7 +772,7 @@ elif user_role == "docente":
                                 else:
                                     st.error(msg)
                         with col2:
-                            if st.button(" Não, cadastrar como nova", key="btn_forcar_nova"):
+                            if st.button("❌ Não, cadastrar como nova", key="btn_forcar_nova"):
                                 producao_submit(user_username, titulo, tipo, ano, veiculo, 
                                                autores, doi, descricao, co_autores_usernames)
                                 st.success("Produção cadastrada!")
@@ -819,29 +814,28 @@ elif user_role == "docente":
                     key=f"edit_descricao_{pid}"
                 )
                 
-                co_autores_usernames = ""
-                if "co_autores" in df_prod.columns:
-                    st.markdown("**👥 Co-autores do PPG**")
-                    co_autores_atuais_str = str(prod_data.get('co_autores', '')).strip()
-                    co_autores_atuais_list = co_autores_atuais_str.split(",") if co_autores_atuais_str else []
-                    co_autores_nomes = [
-                        users_get(username)["name"] if users_get(username) else username
-                        for username in co_autores_atuais_list
-                    ]
-                    
-                    docentes_list = listar_docentes()
-                    docentes_list = [d for d in docentes_list if d != user.get('name', '')]
-                    co_autores_selecionados = st.multiselect(
-                        "Selecione co-autores:",
-                        docentes_list,
-                        default=co_autores_nomes,
-                        key=f"edit_coautores_{pid}"
-                    )
-                    co_autores_usernames = ",".join([
-                        get_docente_username_by_name(nome) 
-                        for nome in co_autores_selecionados 
-                        if get_docente_username_by_name(nome)
-                    ])
+                # ✅ SEMPRE VISÍVEL na edição
+                st.markdown("**👥 Co-autores do PPG**")
+                co_autores_atuais_str = str(prod_data.get('co_autores', '')).strip() if "co_autores" in prod_data.index else ""
+                co_autores_atuais_list = co_autores_atuais_str.split(",") if co_autores_atuais_str else []
+                co_autores_nomes = [
+                    users_get(username)["name"] if users_get(username) else username
+                    for username in co_autores_atuais_list
+                ]
+                
+                docentes_list = listar_docentes()
+                docentes_list = [d for d in docentes_list if d != user.get('name', '')]
+                co_autores_selecionados = st.multiselect(
+                    "Selecione co-autores:",
+                    docentes_list,
+                    default=co_autores_nomes,
+                    key=f"edit_coautores_{pid}"
+                )
+                co_autores_usernames = ",".join([
+                    get_docente_username_by_name(nome) 
+                    for nome in co_autores_selecionados 
+                    if get_docente_username_by_name(nome)
+                ])
                 
                 st.divider()
                 st.subheader("👥 Participações")
