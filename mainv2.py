@@ -663,17 +663,17 @@ def renderizar_checkboxes_autoria(prefixo, discente_primeiro_default=False, doce
     col_check1, col_check2 = st.columns(2)
     with col_check1:
         discente_primeiro = st.checkbox(
-            " Discente do PPG é o 1º autor",
+            " Discente do PPG é o primeiro/último autor",
             value=discente_primeiro_default,
             key=f"{prefixo}_discente_primeiro",
-            help="Marque se o primeiro nome na lista de autores é um discente do PPG"
+            help="Marque se o primeiro/último nome na lista de autores é um discente do PPG"
         )
     with col_check2:
         docente_ultimo = st.checkbox(
-            "👨‍🏫 Docente do PPG é o último autor",
+            "👨‍🏫 Docente do PPG é o primeiro/último autor",
             value=docente_ultimo_default,
             key=f"{prefixo}_docente_ultimo",
-            help="Marque se o último nome na lista de autores é um docente do PPG (geralmente o orientador)"
+            help="Marque se o primeiro/último nome na lista de autores é um docente do PPG (geralmente o orientador)"
         )
     
     return ("Sim" if discente_primeiro else "Não", 
