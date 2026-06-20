@@ -1,4 +1,4 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v5.1 - Dashboard Avançado)
+# app.py — Sistema de Monitoramento de Produção do PPG (v5.2 - Autoria Robusta)
 # Streamlit + Google Sheets + E-mails
 # =========================================================
 
@@ -341,7 +341,7 @@ def get_nome_autor_principal(username):
     return user_data["name"] if user_data else username
 
 # ---------------------------------------------------------
-# 🆕 NOVAS FUNÇÕES DE ANÁLISE AVANÇADA
+# 🆕 ANÁLISE DE AUTORIA ROBUSTA (v5.2)
 # ---------------------------------------------------------
 def extrair_autores_lista(autores_str):
     """Extrai lista de autores a partir do campo texto (separado por vírgula)"""
@@ -350,26 +350,137 @@ def extrair_autores_lista(autores_str):
     autores = [a.strip() for a in str(autores_str).split(",") if a.strip()]
     return autores
 
-def nome_corresponde(nome_lista, nome_busca):
-    """Verifica se um nome da lista corresponde ao nome buscado (comparação flexível)"""
-    if not nome_busca:
+def nome_corresponde(nome1, nome2):
+    """
+    Verifica se dois nomes correspondem (comparação flexível).
+    Usado para comparar nome do autor com nome cadastrado.
+    """
+    if not nome1 or not nome2:
         return False
-    nome_busca_lower = nome_busca.lower().strip()
-    nome_busca_parts = nome_busca_lower.split()
     
-    for nome in nome_lista:
-        nome_lower = nome.lower().strip()
-        # Match exato
-        if nome_lower == nome_busca_lower:
+    nome1_lower = nome1.lower().strip()
+    nome2_lower = nome2.lower().strip()
+    
+    # Match exato
+    if nome1_lower == nome2_lower:
+        return True
+    
+    # Match por sobrenome (última palavra)
+    partes1 = nome1_lower.split()
+    partes2 = nome2_lower.split()
+    
+    if len(partes1) > 1 and len(partes2) > 1:
+        sobrenome1 = partes1[-1]
+        sobrenome2 = partes2[-1]
+        if sobrenome1 == sobrenome2:
             return True
-        # Match por sobrenome (última palavra)
-        if len(nome_busca_parts) > 1:
-            sobrenome = nome_busca_parts[-1]
-            if sobrenome in nome_lower.split():
+    
+    # Match parcial (um contém o outro)
+    if nome1_lower in nome2_lower or nome2_lower in nome1_lower:
+        return True
+    
+    return False
+
+def discente_eh_primeiro_autor(producao_id):
+    """
+    Verifica se algum discente do PPG é o PRIMEIRO autor da produção.
+    
+    Estratégia em 2 camadas:
+    1. Usa a aba 'participacoes' (dados estruturados) - MAIS CONFIÁVEL
+    2. Fallback: usa a aba 'users' com heurística de matching
+    """
+    df_prod = read_df(SHEET_PROD)
+    df_part = read_df(SHEET_PART)
+    df_users = read_df(SHEET_USERS)
+    
+    prod = df_prod[df_prod["id"] == producao_id]
+    if prod.empty:
+        return False
+    
+    row = prod.iloc[0]
+    autores_lista = extrair_autores_lista(row.get("autores", ""))
+    if not autores_lista:
+        return False
+    
+    primeiro_autor = autores_lista[0]
+    
+    # ✅ CAMADA 1: Usa dados estruturados da aba participacoes
+    if not df_part.empty:
+        participacoes_prod = df_part[df_part["producao_id"] == producao_id]
+        discentes_participando = participacoes_prod[
+            participacoes_prod["tipo_participacao"] == "Discente do PPG"
+        ]
+        
+        if not discentes_participando.empty:
+            for _, part in discentes_participando.iterrows():
+                nome_discente = str(part.get("nome_participante", "")).strip()
+                if nome_corresponde(primeiro_autor, nome_discente):
+                    return True
+    
+    # ⚠️ CAMADA 2: Fallback - usa a aba users
+    discentes_cadastrados = df_users[
+        df_users["role"].str.lower().isin(["discente", "aluno", "estudante"])
+    ]
+    
+    if not discentes_cadastrados.empty:
+        for _, disc in discentes_cadastrados.iterrows():
+            if nome_corresponde(primeiro_autor, disc["name"]):
                 return True
-        # Match parcial (qualquer parte do nome)
-        if nome_busca_lower in nome_lower or nome_lower in nome_busca_lower:
-            return True
+    
+    return False
+
+def docente_eh_ultimo_autor(producao_id):
+    """
+    Verifica se algum docente do PPG é o ÚLTIMO autor da produção.
+    
+    Estratégia em 3 camadas:
+    1. Usa o docente_username da produção (autor principal)
+    2. Usa co-autores docentes cadastrados
+    3. Fallback: busca todos os docentes na aba users
+    """
+    df_prod = read_df(SHEET_PROD)
+    df_users = read_df(SHEET_USERS)
+    
+    prod = df_prod[df_prod["id"] == producao_id]
+    if prod.empty:
+        return False
+    
+    row = prod.iloc[0]
+    autores_lista = extrair_autores_lista(row.get("autores", ""))
+    if not autores_lista:
+        return False
+    
+    ultimo_autor = autores_lista[-1]
+    
+    # ✅ CAMADA 1: Verifica se o autor principal (docente_username) é o último autor
+    docente_username = row.get("docente_username", "")
+    if docente_username:
+        docente_data = users_get(docente_username)
+        if docente_data:
+            nome_docente = docente_data.get("name", "")
+            if nome_corresponde(ultimo_autor, nome_docente):
+                return True
+    
+    # ✅ CAMADA 2: Verifica co-autores docentes
+    if "co_autores" in row.index:
+        co_autores_str = str(row.get("co_autores", "")).strip()
+        if co_autores_str:
+            co_autores_list = co_autores_str.split(",")
+            for co_autor_username in co_autores_list:
+                co_autor_username = co_autor_username.strip()
+                co_autor_data = users_get(co_autor_username)
+                if co_autor_data and co_autor_data.get("role", "").lower() in ["docente", "professor"]:
+                    nome_co_autor = co_autor_data.get("name", "")
+                    if nome_corresponde(ultimo_autor, nome_co_autor):
+                        return True
+    
+    # ⚠️ CAMADA 3: Fallback - busca todos os docentes
+    docentes = df_users[df_users["role"].str.lower().isin(["docente", "professor"])]
+    if not docentes.empty:
+        for _, doc in docentes.iterrows():
+            if nome_corresponde(ultimo_autor, doc["name"]):
+                return True
+    
     return False
 
 def tem_participacao_ppg(producao_id):
@@ -384,82 +495,24 @@ def tem_pesquisador_estrangeiro(producao_id):
     parts = df_part[df_part["producao_id"] == producao_id]
     return any(parts["tipo_participacao"] == "Pesquisador estrangeiro")
 
-def discente_eh_primeiro_autor(producao_id):
-    """Verifica se algum discente do PPG é o PRIMEIRO autor da produção"""
-    df_prod = read_df(SHEET_PROD)
-    df_users = read_df(SHEET_USERS)
-    df_part = read_df(SHEET_PART)
-    
-    prod = df_prod[df_prod["id"] == producao_id]
-    if prod.empty: return False
-    
-    row = prod.iloc[0]
-    autores_lista = extrair_autores_lista(row.get("autores", ""))
-    if not autores_lista: return False
-    
-    primeiro_autor = autores_lista[0]
-    
-    # Busca discentes do PPG
-    discentes = df_users[df_users["role"].str.lower().isin(["discente", "aluno", "estudante"])]
-    if discentes.empty: return False
-    
-    # Verifica se o primeiro autor corresponde a algum discente
-    for _, disc in discentes.iterrows():
-        if nome_corresponde([primeiro_autor], disc["name"]):
-            return True
-    
-    return False
-
-def docente_eh_ultimo_autor(producao_id):
-    """Verifica se algum docente do PPG é o ÚLTIMO autor da produção"""
-    df_prod = read_df(SHEET_PROD)
-    df_users = read_df(SHEET_USERS)
-    
-    prod = df_prod[df_prod["id"] == producao_id]
-    if prod.empty: return False
-    
-    row = prod.iloc[0]
-    autores_lista = extrair_autores_lista(row.get("autores", ""))
-    if not autores_lista: return False
-    
-    ultimo_autor = autores_lista[-1]
-    
-    # Busca docentes do PPG
-    docentes = df_users[df_users["role"].str.lower().isin(["docente", "professor"])]
-    if docentes.empty: return False
-    
-    # Verifica se o último autor corresponde a algum docente
-    for _, doc in docentes.iterrows():
-        if nome_corresponde([ultimo_autor], doc["name"]):
-            return True
-    
-    return False
-
 def get_estatisticas_avancadas():
     """Calcula estatísticas avançadas para o dashboard"""
     df_prod = read_df(SHEET_PROD)
     
-    # Estatísticas básicas
     total_producoes = len(df_prod)
     producoes_por_ano = {}
     producoes_com_ppg_por_ano = {}
     total_com_ppg = 0
-    
-    # Estatísticas avançadas
     total_com_estrangeiros = 0
     producoes_com_estrangeiros_por_ano = {}
-    
-    # Estatísticas de autoria
     artigos_com_discente_primeiro = 0
     artigos_com_docente_ultimo = 0
     
-    # Periódicos
     artigos_periodico = df_prod[df_prod["tipo"] == "Artigo em periódico"] if not df_prod.empty else pd.DataFrame()
     periodicos_unicos = artigos_periodico["veiculo"].dropna().unique() if not artigos_periodico.empty else []
     periodicos_unicos = [p for p in periodicos_unicos if str(p).strip()]
     total_periodicos_unicos = len(periodicos_unicos)
     
-    # Top periódicos
     if not artigos_periodico.empty:
         contagem_periodicos = artigos_periodico["veiculo"].value_counts().head(10)
         top_periodicos = contagem_periodicos.to_dict()
@@ -483,7 +536,6 @@ def get_estatisticas_avancadas():
             if tem_pesquisador_estrangeiro(prod_id):
                 com_estrangeiros += 1
             
-            # Análise de autoria apenas para artigos
             if row.get("tipo") == "Artigo em periódico":
                 if discente_eh_primeiro_autor(prod_id):
                     artigos_com_discente_primeiro += 1
@@ -627,7 +679,7 @@ with st.sidebar:
         if st.button("🌐 Página Pública", use_container_width=True, key="btn_public_sidebar"):
             st.session_state.page = "public"; st.rerun()
         
-        if st.button("🔒 Área Restrita", use_container_width=True, key="btn_private_sidebar"):
+        if st.button(" Área Restrita", use_container_width=True, key="btn_private_sidebar"):
             st.session_state.page = "private"; st.rerun()
         
         st.divider()
@@ -639,7 +691,7 @@ with st.sidebar:
     else:
         st.info("🔓 Área Pública")
         st.caption("Visualize as produções e estatísticas")
-        if st.button("🔑 Login", use_container_width=True, key="btn_login_sidebar"):
+        if st.button(" Login", use_container_width=True, key="btn_login_sidebar"):
             st.session_state.page = "login"; st.rerun()
 
 # =========================================================
@@ -761,7 +813,8 @@ if st.session_state.page == "public":
         <div class="highlight-box" style="background:#fff3e0;">
         <p><strong>📌 Como funciona esta análise:</strong> O sistema identifica o <strong>primeiro autor</strong> 
         (nome que aparece no início da lista de autores) e o <strong>último autor</strong> 
-        (nome que aparece no final) de cada artigo, comparando com os docentes e discentes cadastrados no PPG.</p>
+        (nome que aparece no final) de cada artigo, comparando com os docentes e discentes cadastrados no PPG.
+        A prioridade é dada aos dados registrados na aba de participações.</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -780,10 +833,10 @@ if st.session_state.page == "public":
             st.markdown(f"""
             <div class="metric-card-green">
                 <div class="metric-value">{stats['artigos_com_docente_ultimo']}</div>
-                <div class="metric-label">👨‍🏫 Artigos com Docente do PPG<br>como <strong>Último Autor</strong></div>
+                <div class="metric-label">‍🏫 Artigos com Docente do PPG<br>como <strong>Último Autor</strong></div>
             </div>
             """, unsafe_allow_html=True)
-            st.info("💡 Indica orientação docente (último autor geralmente é o orientador)")
+            st.info(" Indica orientação docente (último autor geralmente é o orientador)")
         
         st.divider()
         
@@ -866,7 +919,7 @@ if st.session_state.page == "public":
 # =========================================================
 elif st.session_state.page == "login":
     st.subheader("🔑 Acesso Restrito")
-    tab_login, tab_cad = st.tabs(["🔑 Login", "📝 Cadastro"])
+    tab_login, tab_cad = st.tabs(["🔑 Login", " Cadastro"])
     
     with tab_login:
         st.markdown("<div class='block-card'>", unsafe_allow_html=True)
@@ -1049,17 +1102,17 @@ elif st.session_state.page == "private":
                             st.markdown(f'<span class="main-author-tag">👤 Autor Principal: {autor_principal_nome}</span>', 
                                        unsafe_allow_html=True)
                             if eh_principal:
-                                st.markdown('<span class="autor-principal-badge">📝 Você é o responsável pelo cadastro</span>', 
+                                st.markdown('<span class="autor-principal-badge"> Você é o responsável pelo cadastro</span>', 
                                            unsafe_allow_html=True)
                             else:
-                                st.markdown('<span class="coautor-badge">👥 Você participa como co-autor</span>', 
+                                st.markdown('<span class="coautor-badge"> Você participa como co-autor</span>', 
                                            unsafe_allow_html=True)
                             st.write(f"**Veículo:** {row['veiculo']}")
                             st.write(f"**Autores:** {row['autores']}")
                             st.write(f"**DOI:** {row['doi'] or '—'}")
                             descricao_text = str(row.get('descricao', '')).strip()
                             if descricao_text:
-                                st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{descricao_text}</div>', 
+                                st.markdown(f'<div class="descricao-box"><b> Descrição:</b><br>{descricao_text}</div>', 
                                            unsafe_allow_html=True)
                             parts = df_part[df_part["producao_id"] == row["id"]] if not df_part.empty else pd.DataFrame()
                             if not parts.empty:
@@ -1109,7 +1162,7 @@ elif st.session_state.page == "private":
                             autor_principal = users_get(duplicata["docente_username"])
                             autor_nome = autor_principal["name"] if autor_principal else duplicata["docente_username"]
                             st.error(f"""
-                            ⚠️ **Produção já cadastrada!**
+                            ️ **Produção já cadastrada!**
                             **DOI:** {duplicata.get('doi', 'N/A')}  
                             **Cadastrada por:** {autor_nome}  
                             **Data:** {duplicata.get('created_at', 'N/A')}
@@ -1150,7 +1203,7 @@ elif st.session_state.page == "private":
                         autores = st.text_input("Autores (separados por vírgula, na ordem)", value=prod_data['autores'], key=f"edit_autores_{pid}")
                         doi = st.text_input("DOI", value=prod_data['doi'], key=f"edit_doi_{pid}")
                     descricao_atual = str(prod_data.get('descricao', '')).strip()
-                    descricao = st.text_area("📝 Descrição qualitativa", value=descricao_atual,
+                    descricao = st.text_area(" Descrição qualitativa", value=descricao_atual,
                         placeholder="Descreva o contexto, relevância, impacto...", height=100, key=f"edit_descricao_{pid}")
                     st.markdown("**👥 Co-autores do PPG**")
                     co_autores_atuais_str = str(prod_data.get('co_autores', '')).strip() if "co_autores" in prod_data.index else ""
@@ -1165,7 +1218,7 @@ elif st.session_state.page == "private":
                     co_autores_usernames = ",".join([
                         get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
                     st.divider()
-                    st.subheader("👥 Participações")
+                    st.subheader(" Participações")
                     parts_current = df_part[df_part["producao_id"] == pid] if not df_part.empty else pd.DataFrame()
                     if not parts_current.empty:
                         st.dataframe(parts_current[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
@@ -1194,7 +1247,7 @@ elif st.session_state.page == "private":
             prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
             if prod_data is not None:
                 st.error(f"🗑️ Excluir: {prod_data['titulo']}")
-                st.warning("⚠️ Esta ação não pode ser desfeita!")
+                st.warning("️ Esta ação não pode ser desfeita!")
                 c1, c2 = st.columns(2)
                 with c1:
                     if st.button("Sim, excluir", type="primary", use_container_width=True, key=f"btn_confirm_del_{pid}"):
@@ -1223,7 +1276,7 @@ elif st.session_state.page == "private":
             prods_ori = df_prod[df_prod["docente_username"] == orientador_username] if not df_prod.empty else pd.DataFrame()
             if prods_ori.empty: st.info("Orientador sem produções.")
             else:
-                st.markdown("### 📚 Produções do orientador")
+                st.markdown("###  Produções do orientador")
                 meus_vinc = df_vinc[df_vinc["discente_username"] == user["username"]] if not df_vinc.empty else pd.DataFrame()
                 ja_participei = set() if meus_vinc.empty else set(meus_vinc["producao_id"].tolist())
                 for _, row in prods_ori.iterrows():
