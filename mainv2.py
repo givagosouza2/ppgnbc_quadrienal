@@ -663,7 +663,7 @@ def renderizar_checkboxes_autoria(prefixo, discente_primeiro_default=False, doce
     col_check1, col_check2 = st.columns(2)
     with col_check1:
         discente_primeiro = st.checkbox(
-            " Discente do PPG é o primeiro/último autor",
+            " Discente do PPG é o  autor",
             value=discente_primeiro_default,
             key=f"{prefixo}_discente_primeiro",
             help="Marque se o primeiro/último nome na lista de autores é um discente do PPG"
@@ -673,7 +673,7 @@ def renderizar_checkboxes_autoria(prefixo, discente_primeiro_default=False, doce
             "👨‍🏫 Docente do PPG é o primeiro/último autor",
             value=docente_ultimo_default,
             key=f"{prefixo}_docente_ultimo",
-            help="Marque se o primeiro/último nome na lista de autores é um docente do PPG (geralmente o orientador)"
+            help="Marque se o primeiro/último nome na lista de autores é um docente do PPG"
         )
     
     return ("Sim" if discente_primeiro else "Não", 
@@ -829,7 +829,7 @@ if st.session_state.page == "public":
                 <div class="metric-value">{stats['artigos_com_docente_ultimo']}</div>
                 <div class="metric-label">👨‍🏫 Artigos com Docente do PPG<br>como <strong>Primeiro/Último Autor</strong></div>
             </div>""", unsafe_allow_html=True)
-            st.info("💡 Indica destaque docente (primeiro/último autor geralmente é o orientador)")
+            st.info("💡 Indica destaque docente")
         
         st.divider()
         
