@@ -1,9 +1,9 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v4.8.3 - Final)
+# app.py — Sistema de Monitoramento de Produção do PPG (v4.8.4 - Co-autoria com regex)
 # Streamlit + Google Sheets + E-mails
 # Roles: admin (coordenador), docente, discente
 # =========================================================
 
-import os, time, base64, uuid, hashlib, hmac, smtplib
+import os, time, base64, uuid, hashlib, hmac, smtplib, re
 from email.message import EmailMessage
 from datetime import datetime
 
@@ -25,7 +25,7 @@ try:
 except Exception:
     pass
 
-st.title("🎓 Sistema de Monitoramento de Produção do PPG")
+st.title(" Sistema de Monitoramento de Produção do PPG")
 
 SPREADSHEET_ID = st.secrets.get("GSHEET_SPREADSHEET_ID", "")
 if not SPREADSHEET_ID:
@@ -164,8 +164,7 @@ def get_worksheets_map(sh):
     return {w.title: w for w in sh.worksheets()}
 
 def ensure_header(ws_obj, headers):
-    """Garante que o cabeçalho está correto SEM APAGAR DADOS.
-    Adiciona colunas faltantes no final se necessário."""
+    """Garante que o cabeçalho está correto SEM APAGAR DADOS."""
     try:
         vals = ws_obj.get_all_values()
         if not vals:
@@ -270,7 +269,7 @@ def get_docente_username_by_name(nome):
     return None
 
 # ---------------------------------------------------------
-# FUNÇÕES DE CO-AUTORIA
+# FUNÇÕES DE CO-AUTORIA (COM REGEX E DEBUG)
 # ---------------------------------------------------------
 def verificar_duplicacao(doi, titulo):
     df = read_df(SHEET_PROD)
@@ -300,7 +299,6 @@ def adicionar_co_autor(producao_id, username):
     
     i = int(idx[0])
     
-    # Se a coluna não existir, retorna erro
     if "co_autores" not in df.columns:
         return False, "Coluna co_autores não existe na planilha."
     
@@ -325,22 +323,70 @@ def adicionar_co_autor(producao_id, username):
     return False, "Erro ao adicionar co-autor"
 
 def get_minhas_producoes(username):
-    """Retorna produções onde o usuário é autor principal OU co-autor."""
+    """
+    Retorna produções onde o usuário é autor principal OU co-autor.
+    Busca robusta com regex e logs de debug.
+    """
     df = read_df(SHEET_PROD)
+    
+    st.write(f"🔍 Debug - Buscando produções para: **{username}**")
+    st.write(f"📊 Total de produções na planilha: {len(df)}")
+    
     if df.empty:
+        st.write("️ DataFrame vazio!")
         return pd.DataFrame()
+    
+    # Verificar se coluna co_autores existe
+    if "co_autores" not in df.columns:
+        st.write("⚠️ Coluna 'co_autores' NÃO existe na planilha!")
+        st.write(" As produções aparecerão apenas como autor principal.")
+        principal = df[df["docente_username"] == username].copy()
+        if not principal.empty:
+            principal["tipo_autoria"] = "principal"
+        return principal
+    
+    st.write(f"✅ Coluna 'co_autores' encontrada")
+    
+    # Mostrar amostra dos valores para debug
+    amostra = df[["id", "docente_username", "co_autores"]].head(5).to_dict(orient="records")
+    st.write(f"📝 Amostra de dados:", amostra)
     
     # Autor principal
     principal = df[df["docente_username"] == username].copy()
     if not principal.empty:
         principal["tipo_autoria"] = "principal"
+        st.write(f"✅ Encontradas **{len(principal)}** produções como autor principal")
+    else:
+        st.write(f"⚠️ Nenhuma produção como autor principal")
     
-    # Co-autor (apenas se a coluna existir)
+    # Co-autor (busca robusta com regex)
     coautor = pd.DataFrame()
-    if "co_autores" in df.columns:
-        coautor = df[df["co_autores"].str.contains(username, na=False)].copy()
-        if not coautor.empty:
-            coautor["tipo_autoria"] = "coautor"
+    
+    # Limpar username para busca
+    username_clean = username.strip().lower()
+    
+    # Criar coluna temporária com co_autores limpos
+    df["co_autores_clean"] = df["co_autores"].fillna("").str.lower().str.strip()
+    
+    # Regex: busca o username exato, delimitado por vírgula ou início/fim de string
+    # Ex: "maria.silva" encontra em "maria.silva,joao.santos" mas NÃO em "maria.silva.santos"
+    pattern = rf"(^|,)\s*{re.escape(username_clean)}\s*(,|$)"
+    
+    coautor = df[df["co_autores_clean"].str.contains(pattern, regex=True, na=False)].copy()
+    
+    if not coautor.empty:
+        coautor["tipo_autoria"] = "coautor"
+        st.write(f"✅ Encontradas **{len(coautor)}** produções como co-autor")
+        st.write(f"📋 IDs: {coautor['id'].tolist()}")
+        st.write(f" Co-autores encontrados:")
+        for _, row in coautor.iterrows():
+            st.write(f"   - {row['id']}: `{row['co_autores']}`")
+    else:
+        st.write(f"⚠️ Nenhuma produção encontrada como co-autor")
+        st.write(f"🔎 Buscando por: `{username_clean}`")
+        st.write(f"📋 Todos os valores de co_autores:")
+        for _, row in df.iterrows():
+            st.write(f"   - {row['id']}: `{row['co_autores_clean']}`")
     
     # Combina e remove duplicatas
     if not principal.empty and not coautor.empty:
@@ -351,6 +397,8 @@ def get_minhas_producoes(username):
         todas = coautor
     else:
         todas = pd.DataFrame()
+    
+    st.write(f"📊 **Total de produções retornadas: {len(todas)}**")
     
     return todas
 
@@ -424,7 +472,6 @@ def producao_update(producao_id, titulo, tipo, ano, veiculo, autores, doi, descr
     w = ws(SHEET_PROD)
     row_number = i + 2
     
-    # C=titulo, D=tipo, E=ano, F=veiculo, G=autores, H=doi, I=descricao, J=co_autores
     range_name = f"C{row_number}:J{row_number}"
     values = [[titulo.strip(), tipo, str(ano), veiculo.strip(), autores.strip(), 
                doi.strip(), descricao.strip(), co_autores.strip()]]
@@ -477,7 +524,7 @@ if "user"   not in st.session_state: st.session_state.user   = {}
 # LOGIN / CADASTRO
 # ---------------------------------------------------------
 if not st.session_state.logged:
-    tab_login, tab_cad = st.tabs(["🔑 Login", " Cadastro"])
+    tab_login, tab_cad = st.tabs(["🔑 Login", "📝 Cadastro"])
     with tab_login:
         st.markdown("<div class='block-card'>", unsafe_allow_html=True)
         u = st.text_input("Usuário", key="login_user")
@@ -525,7 +572,7 @@ st.success(f"Logado como **{user.get('name','')}**  | perfil: **{user_role}**")
 # PAINEL ADMIN (COORDENADOR)
 # =========================================================
 if user_role == "admin":
-    st.subheader("🛠️ Painel do Coordenador")
+    st.subheader("️ Painel do Coordenador")
     
     df_users = read_df(SHEET_USERS)
     df_cad = read_df(SHEET_CAD)
@@ -534,8 +581,8 @@ if user_role == "admin":
     df_vinc = read_df(SHEET_VINC)
 
     t1, t2, t3, t4, t5, t6 = st.tabs([
-        "👥 Usuários", "👤 Cadastros pendentes", "📚 Produções (geral)", 
-        "📊 Resumo por ano", "⚙️ Histórico", "➕ Cadastrar Produção"
+        " Usuários", "👤 Cadastros pendentes", "📚 Produções (geral)", 
+        "📊 Resumo por ano", "️ Histórico", "➕ Cadastrar Produção"
     ])
 
     with t1:
@@ -618,7 +665,6 @@ if user_role == "admin":
                     key="admin_prod_descricao"
                 )
                 
-                # ✅ SEMPRE VISÍVEL (sem verificação condicional)
                 st.markdown("**👥 Co-autores do PPG (opcional)**")
                 docentes_list = listar_docentes()
                 docentes_list = [d for d in docentes_list if d != selected_label.split(" (")[0]]
@@ -649,7 +695,6 @@ if user_role == "admin":
 elif user_role == "docente":
     st.subheader(f"📚 Minhas produções — {user.get('name','')}")
     
-    # ✅ Carregar df_part (corrigido)
     df_prod = read_df(SHEET_PROD)
     df_part = read_df(SHEET_PART)
     
@@ -673,7 +718,7 @@ elif user_role == "docente":
                                        unsafe_allow_html=True)
                         else:
                             autor_principal_nome = get_nome_autor_principal(row["docente_username"])
-                            st.markdown(f'<span class="coautor-badge"> Co-autor (cadastrado por {autor_principal_nome})</span>', 
+                            st.markdown(f'<span class="coautor-badge">👥 Co-autor (cadastrado por {autor_principal_nome})</span>', 
                                        unsafe_allow_html=True)
                         
                         st.write(f"**Veículo:** {row['veiculo']}")
@@ -693,10 +738,10 @@ elif user_role == "docente":
                         if eh_principal:
                             col1, col2 = st.columns(2)
                             with col1:
-                                if st.button("️ Editar", key=f"edit_{row['id']}", use_container_width=True):
+                                if st.button("✏️ Editar", key=f"edit_{row['id']}", use_container_width=True):
                                     st.session_state['editing_prod_id'] = row['id']; st.rerun()
                             with col2:
-                                if st.button("🗑️ Excluir", key=f"del_{row['id']}", use_container_width=True):
+                                if st.button("️ Excluir", key=f"del_{row['id']}", use_container_width=True):
                                     st.session_state['deleting_prod_id'] = row['id']; st.rerun()
                         else:
                             st.info("💡 Co-autores não podem editar ou excluir esta produção.")
@@ -723,7 +768,6 @@ elif user_role == "docente":
             key="prod_descricao"
         )
         
-        # ✅ SEMPRE VISÍVEL (sem verificação condicional)
         st.markdown("**👥 Co-autores do PPG (opcional)**")
         docentes_list = listar_docentes()
         docentes_list = [d for d in docentes_list if d != user.get('name', '')]
@@ -814,8 +858,7 @@ elif user_role == "docente":
                     key=f"edit_descricao_{pid}"
                 )
                 
-                # ✅ SEMPRE VISÍVEL na edição
-                st.markdown("**👥 Co-autores do PPG**")
+                st.markdown("** Co-autores do PPG**")
                 co_autores_atuais_str = str(prod_data.get('co_autores', '')).strip() if "co_autores" in prod_data.index else ""
                 co_autores_atuais_list = co_autores_atuais_str.split(",") if co_autores_atuais_str else []
                 co_autores_nomes = [
@@ -912,12 +955,12 @@ elif user_role == "discente":
         prods_ori = df_prod[df_prod["docente_username"] == orientador_username] if not df_prod.empty else pd.DataFrame()
         if prods_ori.empty: st.info("Orientador sem produções.")
         else:
-            st.markdown("###  Produções do orientador")
+            st.markdown("### 📚 Produções do orientador")
             meus_vinc = df_vinc[df_vinc["discente_username"] == user["username"]] if not df_vinc.empty else pd.DataFrame()
             ja_participei = set() if meus_vinc.empty else set(meus_vinc["producao_id"].tolist())
             for _, row in prods_ori.iterrows():
                 pid = row["id"]; ja = pid in ja_participei
-                with st.expander(f"{'✅' if ja else '⬜'} [{row['ano']}] {row['titulo']}"):
+                with st.expander(f"{'✅' if ja else ''} [{row['ano']}] {row['titulo']}"):
                     st.write(f"**Tipo:** {row['tipo']} | **Veículo:** {row['veiculo']}")
                     descricao_text = str(row.get('descricao', '')).strip()
                     if descricao_text:
@@ -929,7 +972,7 @@ elif user_role == "discente":
                             vinculo_submit(user["username"], orientador_username, pid)
                             st.success("Registrado!"); st.rerun()
     st.divider()
-    st.markdown("### 📋 Minhas participações")
+    st.markdown("###  Minhas participações")
     if not df_vinc.empty:
         mine = df_vinc[df_vinc["discente_username"] == user["username"]]
         if not mine.empty:
