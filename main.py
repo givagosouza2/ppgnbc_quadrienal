@@ -1,6 +1,5 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v4.6 - Com descrição qualitativa)
+# app.py — Sistema de Monitoramento de Produção do PPG (v4.7 - Otimizado para quota)
 # Streamlit + Google Sheets + E-mails
-# Roles: admin (coordenador), docente, discente
 # =========================================================
 
 import os, time, base64, uuid, hashlib, hmac, smtplib
@@ -42,7 +41,6 @@ HEADERS_USERS = ["username", "name", "email", "role", "orientador", "password_ha
 HEADERS_CAD   = ["id", "name", "username", "email", "role", "orientador",
                  "password_hash", "status", "created_at", "reviewed_at",
                  "reviewed_by", "review_reason"]
-# ✅ NOVO: adicionada coluna "descricao" após "doi"
 HEADERS_PROD  = ["id", "docente_username", "titulo", "tipo", "ano",
                  "veiculo", "autores", "doi", "descricao", "created_at"]
 HEADERS_PART  = ["id", "producao_id", "tipo_participacao",
@@ -117,7 +115,7 @@ def verify_password(password, stored):
         return False
 
 # ---------------------------------------------------------
-# GOOGLE SHEETS
+# GOOGLE SHEETS (OTIMIZADO PARA QUOTA)
 # ---------------------------------------------------------
 @st.cache_resource
 def gclient():
@@ -136,14 +134,16 @@ def _retryable(status): return status in (429, 500, 503)
 @st.cache_resource
 def spreadsheet():
     last_err = None
-    for attempt in range(4):
+    for attempt in range(5):
         try:
             return gclient().open_by_key(SPREADSHEET_ID)
         except APIError as e:
             last_err = e
             status, _ = _extract_api_error_info(e)
             if _retryable(status):
-                time.sleep(1.5 * (attempt + 1)); continue
+                # Backoff exponential: 2, 4, 8, 16, 32 segundos
+                time.sleep(2 ** (attempt + 1))
+                continue
             raise
         except SpreadsheetNotFound:
             raise
@@ -169,10 +169,14 @@ def ensure_header(ws_obj, headers):
         if len(vals) >= 1 and vals[0] != headers:
             ws_obj.update("1:1", [headers])
     except APIError as e:
-        st.warning(f"️ Erro ao verificar aba '{ws_obj.title}': {e}")
+        # Silencioso para não poluir a interface em caso de quota
+        pass
 
-def ensure_worksheets(sh):
-    wmap = get_worksheets_map(sh)
+# ✅ OTIMIZAÇÃO: ensure_worksheets agora está em cache_resource
+# Isso significa que só roda UMA VEZ por sessão, não a cada rerun
+@st.cache_resource(show_spinner=False)
+def ensure_worksheets(_sh):
+    wmap = get_worksheets_map(_sh)
     targets = [
         (SHEET_USERS, HEADERS_USERS), (SHEET_CAD, HEADERS_CAD),
         (SHEET_PROD, HEADERS_PROD),   (SHEET_PART, HEADERS_PART),
@@ -180,7 +184,7 @@ def ensure_worksheets(sh):
     ]
     for title, headers in targets:
         if title not in wmap:
-            ws_obj = sh.add_worksheet(title=title, rows=2000, cols=max(12, len(headers)))
+            ws_obj = _sh.add_worksheet(title=title, rows=2000, cols=max(12, len(headers)))
             ws_obj.append_row(headers)
             wmap[title] = ws_obj
         else:
@@ -195,10 +199,11 @@ def ws(sheet_name):
         ensure_worksheets(spreadsheet())
         return spreadsheet().worksheet(sheet_name)
 
-@st.cache_data(ttl=15, show_spinner=False)
+# ✅ OTIMIZAÇÃO: TTL aumentado de 15s para 60s (reduz 75% das requisições)
+@st.cache_data(ttl=60, show_spinner=False)
 def read_df(sheet_name):
     last_err = None
-    for attempt in range(4):
+    for attempt in range(5):
         try:
             w = ws(sheet_name)
             values = w.get_all_values()
@@ -206,9 +211,13 @@ def read_df(sheet_name):
             return pd.DataFrame(values[1:], columns=values[0]).fillna("")
         except APIError as e:
             last_err = e
-            if _retryable(_extract_api_error_info(e)[0]):
-                time.sleep(1.5 * (attempt + 1)); continue
+            status, _ = _extract_api_error_info(e)
+            if _retryable(status):
+                # Backoff exponential mais agressivo
+                time.sleep(2 ** (attempt + 1))
+                continue
             break
+    # Em caso de falha (quota), retorna vazio ao invés de travar
     return pd.DataFrame()
 
 # ---------------------------------------------------------
@@ -289,7 +298,6 @@ def cadastro_review(req_id, action, admin_username, reason=""):
                    f"Olá, {df.loc[i,'name']}!\n\nSeu cadastro foi: {status}.\nMotivo: {reason or '—'}")
     return True, f"Solicitação {status.lower()}."
 
-# ✅ NOVO: producao_submit com descricao
 def producao_submit(docente_username, titulo, tipo, ano, veiculo, autores, doi, descricao=""):
     prod_id = str(uuid.uuid4())
     ws(SHEET_PROD).append_row([prod_id, docente_username, titulo.strip(), tipo, str(ano),
@@ -298,7 +306,6 @@ def producao_submit(docente_username, titulo, tipo, ano, veiculo, autores, doi, 
     clear_cache()
     return prod_id
 
-# ✅ ATUALIZADO: producao_update agora atualiza C:I (incluindo descricao)
 def producao_update(producao_id, titulo, tipo, ano, veiculo, autores, doi, descricao=""):
     df = read_df(SHEET_PROD)
     idx = df.index[df["id"] == producao_id]
@@ -306,7 +313,6 @@ def producao_update(producao_id, titulo, tipo, ano, veiculo, autores, doi, descr
     i = int(idx[0])
     w = ws(SHEET_PROD)
     row_number = i + 2
-    # C=titulo, D=tipo, E=ano, F=veiculo, G=autores, H=doi, I=descricao
     range_name = f"C{row_number}:I{row_number}"
     values = [[titulo.strip(), tipo, str(ano), veiculo.strip(), autores.strip(), doi.strip(), descricao.strip()]]
     w.update(range_name, values)
@@ -453,7 +459,7 @@ if user_role == "admin":
         if df_prod.empty: st.info("Sem produções.")
         else:
             for ano in ANOS:
-                st.markdown(f"###  {ano}")
+                st.markdown(f"### 📅 {ano}")
                 subset = df_prod[df_prod["ano"].astype(str).str.strip() == ano]
                 if subset.empty: st.write("— Nenhuma produção registrada —")
                 else:
@@ -488,7 +494,6 @@ if user_role == "admin":
                     veiculo = st.text_input("Veículo/Periódico", key="admin_prod_veiculo")
                     autores = st.text_input("Autores", key="admin_prod_autores")
                     doi = st.text_input("DOI (opcional)", key="admin_prod_doi")
-                # ✅ NOVO: campo de descrição qualitativa
                 descricao = st.text_area(
                     "📝 Descrição qualitativa (opcional)",
                     placeholder="Descreva o contexto, relevância, impacto ou detalhes qualitativos desta produção...",
@@ -525,7 +530,6 @@ elif user_role == "docente":
                     st.write(f"**Veículo:** {row['veiculo']}")
                     st.write(f"**Autores:** {row['autores']}")
                     st.write(f"**DOI:** {row['doi'] or '—'}")
-                    # ✅ NOVO: exibir descrição qualitativa
                     descricao_text = str(row.get('descricao', '')).strip()
                     if descricao_text:
                         st.markdown(f'<div class="descricao-box"><b>📝 Descrição qualitativa:</b><br>{descricao_text}</div>', unsafe_allow_html=True)
@@ -563,7 +567,6 @@ elif user_role == "docente":
                     veiculo = st.text_input("Veículo", value=prod_data['veiculo'], key=f"edit_veiculo_{pid}")
                     autores = st.text_input("Autores", value=prod_data['autores'], key=f"edit_autores_{pid}")
                     doi = st.text_input("DOI", value=prod_data['doi'], key=f"edit_doi_{pid}")
-                # ✅ NOVO: campo de descrição no formulário de edição
                 descricao_atual = str(prod_data.get('descricao', '')).strip()
                 descricao = st.text_area(
                     "📝 Descrição qualitativa",
@@ -636,7 +639,6 @@ elif user_role == "discente":
                 pid = row["id"]; ja = pid in ja_participei
                 with st.expander(f"{'✅' if ja else '⬜'} [{row['ano']}] {row['titulo']}"):
                     st.write(f"**Tipo:** {row['tipo']} | **Veículo:** {row['veiculo']}")
-                    # ✅ NOVO: discente também vê a descrição
                     descricao_text = str(row.get('descricao', '')).strip()
                     if descricao_text:
                         st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{descricao_text}</div>', unsafe_allow_html=True)
