@@ -1,4 +1,4 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v3.1)
+# app.py — Sistema de Monitoramento de Produção do PPG (v3.2 - Layout melhorado)
 # Streamlit + Google Sheets + E-mails
 # Roles: admin, docente, discente
 # =========================================================
@@ -449,7 +449,7 @@ if role_of(user) == "admin":
     st.divider()
 
 # =========================================================
-# PAINEL DOCENTE (COM EDIÇÃO, EXCLUSÃO E PARTICIPAÇÕES)
+# PAINEL DOCENTE (LAYOUT REORGANIZADO)
 # =========================================================
 if role_of(user) == "docente":
     st.subheader(f"📚 Minhas produções — {user.get('name','')}")
@@ -458,10 +458,15 @@ if role_of(user) == "docente":
     df_part = read_df(SHEET_PART)
     mine = df_prod[df_prod["docente_username"] == user["username"]] if not df_prod.empty else pd.DataFrame()
 
+    # 1️⃣ PRIMEIRO: Lista de produções por ano (somente visualização)
+    st.markdown("### 📋 Minhas produções cadastradas")
+    
+    tem_producoes = False
     for ano in ANOS:
-        st.markdown(f"### 📅 {ano}")
         subset = mine[mine["ano"].astype(str) == ano] if not mine.empty else pd.DataFrame()
         if not subset.empty:
+            tem_producoes = True
+            st.markdown(f"#### 📅 {ano}")
             for _, row in subset.iterrows():
                 with st.expander(f"**{row['titulo']}** — {row['tipo']}"):
                     st.write(f"**Veículo:** {row['veiculo']}")
@@ -472,79 +477,35 @@ if role_of(user) == "docente":
                     if not parts.empty:
                         st.write("**Participações registradas:**")
                         st.dataframe(parts[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
-                    else:
-                        st.info("Nenhuma participação registrada ainda.")
-
-                    # Botões de ação para esta produção específica
-                    col1, col2, col3 = st.columns(3)
+                    
+                    # Botões de ação (Editar e Excluir)
+                    col1, col2 = st.columns(2)
                     with col1:
-                        if st.button("➕ Adicionar participação", key=f"add_part_{row['id']}"):
-                            st.session_state['adding_part_to'] = row['id']
-                            st.rerun()
-                    with col2:
-                        if st.button("✏️ Editar produção", key=f"edit_{row['id']}"):
+                        if st.button("✏️ Editar", key=f"edit_{row['id']}", use_container_width=True):
                             st.session_state['editing_prod_id'] = row['id']
                             st.rerun()
-                    with col3:
-                        if st.button("🗑️ Excluir produção", key=f"del_{row['id']}"):
+                    with col2:
+                        if st.button("🗑️ Excluir", key=f"del_{row['id']}", use_container_width=True):
                             st.session_state['deleting_prod_id'] = row['id']
                             st.rerun()
-        else:
-            st.info(f"Nenhuma produção em {ano}.")
-
-    st.divider()
     
-    # Formulário para ADICIONAR NOVA produção
-    st.subheader("➕ Cadastrar nova produção")
-    with st.form("form_prod"):
-        c1, c2 = st.columns(2)
-        with c1:
-            titulo = st.text_input("Título da produção", key="prod_titulo")
-            tipo   = st.selectbox("Tipo", TIPOS_PRODUCAO, key="prod_tipo")
-            ano    = st.selectbox("Ano", ANOS, key="prod_ano")
-        with c2:
-            veiculo = st.text_input("Veículo/Periódico/Evento", key="prod_veiculo")
-            autores = st.text_input("Autores (separados por vírgula)", key="prod_autores")
-            doi     = st.text_input("DOI / Link (opcional)", key="prod_doi")
-        submitted = st.form_submit_button("Salvar nova produção", use_container_width=True)
-        if submitted:
-            if not titulo.strip(): st.error("Título é obrigatório.")
-            else:
-                producao_submit(user["username"], titulo, tipo, ano, veiculo, autores, doi)
-                st.success("Produção cadastrada!")
-                st.rerun()
+    if not tem_producoes:
+        st.info("Nenhuma produção cadastrada ainda.")
+    
+    st.divider()
 
-    # Formulário para ADICIONAR PARTICIPAÇÃO
-    if 'adding_part_to' in st.session_state:
-        pid = st.session_state['adding_part_to']
-        st.markdown("---")
-        st.subheader(f"➕ Adicionar participação na produção selecionada")
-        with st.form(f"form_part_{pid}"):
-            tipo_p = st.selectbox("Tipo de participação", TIPOS_PARTICIPACAO, key=f"part_tipo_{pid}")
-            nome_p = st.text_input("Nome do participante", key=f"part_nome_{pid}")
-            vinc   = st.text_input("Vínculo/instituição (opcional)", key=f"part_vinc_{pid}")
-            if st.form_submit_button("Salvar participação", use_container_width=True, key=f"btn_save_part_{pid}"):
-                if not nome_p.strip(): st.error("Informe o nome.")
-                else:
-                    participacao_submit(pid, tipo_p, nome_p, vinc)
-                    st.session_state.pop('adding_part_to', None)
-                    st.success("Participação adicionada!")
-                    st.rerun()
-        if st.button("Cancelar", key=f"btn_cancel_part_{pid}"):
-            st.session_state.pop('adding_part_to', None)
-            st.rerun()
-
-    # Formulário para EDITAR produção
+    # 2️⃣ SEGUNDO: Formulário de edição (se houver produção selecionada)
     if 'editing_prod_id' in st.session_state:
         pid = st.session_state['editing_prod_id']
-        # CORREÇÃO: verificar se o filtro retornou algo antes de usar .iloc[0]
         prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
         prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
 
         if prod_data is not None:
-            st.markdown("---")
-            st.subheader(f"✏️ Editando: {prod_data['titulo']}")
+            st.markdown("### ✏️ Editar produção")
+            st.info(f"Editando: **{prod_data['titulo']}**")
+            
             with st.form(f"form_edit_{pid}"):
+                st.subheader("📝 Dados da produção")
                 c1, c2 = st.columns(2)
                 with c1:
                     titulo = st.text_input("Título", value=prod_data['titulo'], key=f"edit_titulo_{pid}")
@@ -557,16 +518,58 @@ if role_of(user) == "docente":
                     autores = st.text_input("Autores", value=prod_data['autores'], key=f"edit_autores_{pid}")
                     doi = st.text_input("DOI / Link", value=prod_data['doi'], key=f"edit_doi_{pid}")
 
-                if st.form_submit_button("Salvar alterações", use_container_width=True, key=f"btn_save_edit_{pid}"):
-                    if not titulo.strip(): st.error("Título é obrigatório.")
+                st.divider()
+                st.subheader("👥 Gerenciar participações")
+                
+                # Mostrar participações atuais
+                parts_current = df_part[df_part["producao_id"] == pid] if not df_part.empty else pd.DataFrame()
+                if not parts_current.empty:
+                    st.write("**Participações cadastradas:**")
+                    st.dataframe(parts_current[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
+                else:
+                    st.info("Nenhuma participação cadastrada.")
+                
+                # Formulário para adicionar nova participação
+                st.markdown("**Adicionar nova participação:**")
+                c3, c4 = st.columns(2)
+                with c3:
+                    tipo_p = st.selectbox("Tipo de participação", TIPOS_PARTICIPACAO, key=f"part_tipo_{pid}")
+                with c4:
+                    nome_p = st.text_input("Nome do participante", key=f"part_nome_{pid}")
+                vinc = st.text_input("Vínculo/instituição (opcional)", key=f"part_vinc_{pid}")
+                
+                c_save1, c_save2, c_cancel = st.columns([1, 1, 1])
+                with c_save1:
+                    btn_add_part = st.form_submit_button("➕ Adicionar participação", use_container_width=True)
+                with c_save2:
+                    btn_save_edit = st.form_submit_button("💾 Salvar alterações da produção", use_container_width=True)
+                with c_cancel:
+                    btn_cancel_edit = st.form_submit_button("❌ Cancelar", use_container_width=True)
+
+            # Processar adição de participação
+            if btn_add_part:
+                if not nome_p.strip():
+                    st.error("Informe o nome do participante.")
+                else:
+                    participacao_submit(pid, tipo_p, nome_p, vinc)
+                    st.success("Participação adicionada!")
+                    st.rerun()
+            
+            # Processar salvamento da edição
+            if btn_save_edit:
+                if not titulo.strip():
+                    st.error("Título é obrigatório.")
+                else:
+                    ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, autores, doi)
+                    if ok:
+                        st.session_state.pop('editing_prod_id', None)
+                        st.success(msg)
+                        st.rerun()
                     else:
-                        ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, autores, doi)
-                        if ok:
-                            st.session_state.pop('editing_prod_id', None)
-                            st.success(msg)
-                            st.rerun()
-                        else: st.error(msg)
-            if st.button("Cancelar edição", key=f"btn_cancel_edit_{pid}"):
+                        st.error(msg)
+            
+            # Processar cancelamento
+            if btn_cancel_edit:
                 st.session_state.pop('editing_prod_id', None)
                 st.rerun()
         else:
@@ -574,17 +577,39 @@ if role_of(user) == "docente":
             if st.button("Voltar", key="btn_back_edit"):
                 st.session_state.pop('editing_prod_id', None)
                 st.rerun()
+        
+        st.divider()
 
-    # Formulário para EXCLUIR produção (Confirmação)
+    # 3️⃣ TERCEIRO: Formulário de cadastro de nova produção
+    st.markdown("### ➕ Cadastrar nova produção")
+    with st.form("form_prod"):
+        c1, c2 = st.columns(2)
+        with c1:
+            titulo = st.text_input("Título da produção", key="prod_titulo")
+            tipo   = st.selectbox("Tipo", TIPOS_PRODUCAO, key="prod_tipo")
+            ano    = st.selectbox("Ano", ANOS, key="prod_ano")
+        with c2:
+            veiculo = st.text_input("Veículo/Periódico/Evento", key="prod_veiculo")
+            autores = st.text_input("Autores (separados por vírgula)", key="prod_autores")
+            doi     = st.text_input("DOI / Link (opcional)", key="prod_doi")
+        submitted = st.form_submit_button("💾 Salvar nova produção", use_container_width=True)
+        if submitted:
+            if not titulo.strip():
+                st.error("Título é obrigatório.")
+            else:
+                producao_submit(user["username"], titulo, tipo, ano, veiculo, autores, doi)
+                st.success("Produção cadastrada com sucesso!")
+                st.rerun()
+
+    # Formulário para EXCLUIR produção (Confirmação) - aparece em modal
     if 'deleting_prod_id' in st.session_state:
         pid = st.session_state['deleting_prod_id']
-        # CORREÇÃO: verificar se o filtro retornou algo antes de usar .iloc[0]
         prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
         prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
 
         if prod_data is not None:
             st.markdown("---")
-            st.subheader(f"️ Excluir produção: {prod_data['titulo']}")
+            st.error(f"🗑️ **Excluir produção: {prod_data['titulo']}**")
             st.warning("⚠️ **Atenção:** Tem certeza que deseja excluir esta produção? Esta ação não pode ser desfeita e apagará também as participações vinculadas.")
             
             c1, c2 = st.columns(2)
@@ -663,5 +688,5 @@ if role_of(user) == "discente":
 # LOGOUT
 # =========================================================
 st.divider()
-if st.button(" Sair", key="btn_logout"):
+if st.button("🚪 Sair", key="btn_logout"):
     st.session_state.logged = False; st.session_state.user = {}; st.rerun()
