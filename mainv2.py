@@ -1,4 +1,4 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v5.2 - Autoria Robusta)
+# app.py — Sistema de Monitoramento de Produção do PPG (v5.3 - Checkboxes de Autoria)
 # Streamlit + Google Sheets + E-mails
 # =========================================================
 
@@ -46,8 +46,10 @@ HEADERS_USERS = ["username", "name", "email", "role", "orientador", "password_ha
 HEADERS_CAD   = ["id", "name", "username", "email", "role", "orientador",
                  "password_hash", "status", "created_at", "reviewed_at",
                  "reviewed_by", "review_reason"]
+# ✅ NOVAS COLUNAS: discente_primeiro_autor e docente_ultimo_autor
 HEADERS_PROD  = ["id", "docente_username", "titulo", "tipo", "ano",
-                 "veiculo", "autores", "doi", "descricao", "co_autores", "created_at"]
+                 "veiculo", "autores", "doi", "descricao", "co_autores",
+                 "discente_primeiro_autor", "docente_ultimo_autor", "created_at"]
 HEADERS_PART  = ["id", "producao_id", "tipo_participacao",
                  "nome_participante", "vinculo", "created_at"]
 HEADERS_VINC  = ["id", "discente_username", "orientador_username",
@@ -93,6 +95,11 @@ st.markdown("""
 .public-notice { background:#e3f2fd; border-left:4px solid #2196f3; padding:12px; 
                  border-radius:6px; margin:15px 0; }
 .highlight-box { background:#f5f5f5; border:1px solid #ddd; padding:15px; border-radius:8px; margin:10px 0;}
+.badge-discente-1 { display:inline-block; background:#e1f5fe; color:#0277bd; 
+                    padding:4px 10px; border-radius:12px; font-size:0.8rem; margin:2px; font-weight:600;}
+.badge-docente-last { display:inline-block; background:#e8f5e9; color:#2e7d32; 
+                      padding:4px 10px; border-radius:12px; font-size:0.8rem; margin:2px; font-weight:600;}
+.autoria-section { background:#fff3e0; border:1px solid #ffe0b2; padding:12px; border-radius:8px; margin:10px 0;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -341,87 +348,59 @@ def get_nome_autor_principal(username):
     return user_data["name"] if user_data else username
 
 # ---------------------------------------------------------
-# 🆕 ANÁLISE DE AUTORIA ROBUSTA (v5.2)
+# 🆕 ANÁLISE DE AUTORIA COM CHECKBOXES (v5.3)
 # ---------------------------------------------------------
 def extrair_autores_lista(autores_str):
-    """Extrai lista de autores a partir do campo texto (separado por vírgula)"""
     if not autores_str or pd.isna(autores_str):
         return []
-    autores = [a.strip() for a in str(autores_str).split(",") if a.strip()]
-    return autores
+    return [a.strip() for a in str(autores_str).split(",") if a.strip()]
 
 def nome_corresponde(nome1, nome2):
-    """
-    Verifica se dois nomes correspondem (comparação flexível).
-    Usado para comparar nome do autor com nome cadastrado.
-    """
     if not nome1 or not nome2:
         return False
-    
     nome1_lower = nome1.lower().strip()
     nome2_lower = nome2.lower().strip()
-    
-    # Match exato
     if nome1_lower == nome2_lower:
         return True
-    
-    # Match por sobrenome (última palavra)
     partes1 = nome1_lower.split()
     partes2 = nome2_lower.split()
-    
     if len(partes1) > 1 and len(partes2) > 1:
-        sobrenome1 = partes1[-1]
-        sobrenome2 = partes2[-1]
-        if sobrenome1 == sobrenome2:
+        if partes1[-1] == partes2[-1]:
             return True
-    
-    # Match parcial (um contém o outro)
     if nome1_lower in nome2_lower or nome2_lower in nome1_lower:
         return True
-    
     return False
 
-def discente_eh_primeiro_autor(producao_id):
-    """
-    Verifica se algum discente do PPG é o PRIMEIRO autor da produção.
-    
-    Estratégia em 2 camadas:
-    1. Usa a aba 'participacoes' (dados estruturados) - MAIS CONFIÁVEL
-    2. Fallback: usa a aba 'users' com heurística de matching
-    """
+def discente_eh_primeiro_autor_fallback(producao_id):
+    """Fallback heurístico para produções antigas sem checkbox marcado"""
     df_prod = read_df(SHEET_PROD)
     df_part = read_df(SHEET_PART)
     df_users = read_df(SHEET_USERS)
     
     prod = df_prod[df_prod["id"] == producao_id]
-    if prod.empty:
-        return False
+    if prod.empty: return False
     
     row = prod.iloc[0]
     autores_lista = extrair_autores_lista(row.get("autores", ""))
-    if not autores_lista:
-        return False
-    
+    if not autores_lista: return False
     primeiro_autor = autores_lista[0]
     
-    # ✅ CAMADA 1: Usa dados estruturados da aba participacoes
+    # Camada 1: participações
     if not df_part.empty:
         participacoes_prod = df_part[df_part["producao_id"] == producao_id]
         discentes_participando = participacoes_prod[
             participacoes_prod["tipo_participacao"] == "Discente do PPG"
         ]
-        
         if not discentes_participando.empty:
             for _, part in discentes_participando.iterrows():
                 nome_discente = str(part.get("nome_participante", "")).strip()
                 if nome_corresponde(primeiro_autor, nome_discente):
                     return True
     
-    # ⚠️ CAMADA 2: Fallback - usa a aba users
+    # Camada 2: users
     discentes_cadastrados = df_users[
         df_users["role"].str.lower().isin(["discente", "aluno", "estudante"])
     ]
-    
     if not discentes_cadastrados.empty:
         for _, disc in discentes_cadastrados.iterrows():
             if nome_corresponde(primeiro_autor, disc["name"]):
@@ -429,52 +408,36 @@ def discente_eh_primeiro_autor(producao_id):
     
     return False
 
-def docente_eh_ultimo_autor(producao_id):
-    """
-    Verifica se algum docente do PPG é o ÚLTIMO autor da produção.
-    
-    Estratégia em 3 camadas:
-    1. Usa o docente_username da produção (autor principal)
-    2. Usa co-autores docentes cadastrados
-    3. Fallback: busca todos os docentes na aba users
-    """
+def docente_eh_ultimo_autor_fallback(producao_id):
+    """Fallback heurístico para produções antigas sem checkbox marcado"""
     df_prod = read_df(SHEET_PROD)
     df_users = read_df(SHEET_USERS)
     
     prod = df_prod[df_prod["id"] == producao_id]
-    if prod.empty:
-        return False
+    if prod.empty: return False
     
     row = prod.iloc[0]
     autores_lista = extrair_autores_lista(row.get("autores", ""))
-    if not autores_lista:
-        return False
-    
+    if not autores_lista: return False
     ultimo_autor = autores_lista[-1]
     
-    # ✅ CAMADA 1: Verifica se o autor principal (docente_username) é o último autor
     docente_username = row.get("docente_username", "")
     if docente_username:
         docente_data = users_get(docente_username)
         if docente_data:
-            nome_docente = docente_data.get("name", "")
-            if nome_corresponde(ultimo_autor, nome_docente):
+            if nome_corresponde(ultimo_autor, docente_data.get("name", "")):
                 return True
     
-    # ✅ CAMADA 2: Verifica co-autores docentes
     if "co_autores" in row.index:
         co_autores_str = str(row.get("co_autores", "")).strip()
         if co_autores_str:
-            co_autores_list = co_autores_str.split(",")
-            for co_autor_username in co_autores_list:
+            for co_autor_username in co_autores_str.split(","):
                 co_autor_username = co_autor_username.strip()
                 co_autor_data = users_get(co_autor_username)
                 if co_autor_data and co_autor_data.get("role", "").lower() in ["docente", "professor"]:
-                    nome_co_autor = co_autor_data.get("name", "")
-                    if nome_corresponde(ultimo_autor, nome_co_autor):
+                    if nome_corresponde(ultimo_autor, co_autor_data.get("name", "")):
                         return True
     
-    # ⚠️ CAMADA 3: Fallback - busca todos os docentes
     docentes = df_users[df_users["role"].str.lower().isin(["docente", "professor"])]
     if not docentes.empty:
         for _, doc in docentes.iterrows():
@@ -496,7 +459,11 @@ def tem_pesquisador_estrangeiro(producao_id):
     return any(parts["tipo_participacao"] == "Pesquisador estrangeiro")
 
 def get_estatisticas_avancadas():
-    """Calcula estatísticas avançadas para o dashboard"""
+    """
+    Calcula estatísticas avançadas.
+    PRIORIDADE: campos explícitos (checkboxes).
+    FALLBACK: heurística para produções antigas.
+    """
     df_prod = read_df(SHEET_PROD)
     
     total_producoes = len(df_prod)
@@ -514,15 +481,13 @@ def get_estatisticas_avancadas():
     total_periodicos_unicos = len(periodicos_unicos)
     
     if not artigos_periodico.empty:
-        contagem_periodicos = artigos_periodico["veiculo"].value_counts().head(10)
-        top_periodicos = contagem_periodicos.to_dict()
+        top_periodicos = artigos_periodico["veiculo"].value_counts().head(10).to_dict()
     else:
         top_periodicos = {}
     
     for ano in ANOS:
         subset = df_prod[df_prod["ano"].astype(str).str.strip() == ano] if not df_prod.empty else pd.DataFrame()
-        total_ano = len(subset)
-        producoes_por_ano[ano] = total_ano
+        producoes_por_ano[ano] = len(subset)
         
         com_ppg = 0
         com_estrangeiros = 0
@@ -532,15 +497,26 @@ def get_estatisticas_avancadas():
             
             if tem_participacao_ppg(prod_id):
                 com_ppg += 1
-            
             if tem_pesquisador_estrangeiro(prod_id):
                 com_estrangeiros += 1
             
             if row.get("tipo") == "Artigo em periódico":
-                if discente_eh_primeiro_autor(prod_id):
+                # ✅ PRIORIDADE: campos explícitos (checkboxes)
+                discente_primeiro = str(row.get("discente_primeiro_autor", "")).strip().lower()
+                docente_ultimo = str(row.get("docente_ultimo_autor", "")).strip().lower()
+                
+                # Se marcado "Sim", conta. Se vazio, usa fallback heurístico.
+                if discente_primeiro == "sim":
                     artigos_com_discente_primeiro += 1
-                if docente_eh_ultimo_autor(prod_id):
+                elif discente_primeiro == "":
+                    if discente_eh_primeiro_autor_fallback(prod_id):
+                        artigos_com_discente_primeiro += 1
+                
+                if docente_ultimo == "sim":
                     artigos_com_docente_ultimo += 1
+                elif docente_ultimo == "":
+                    if docente_eh_ultimo_autor_fallback(prod_id):
+                        artigos_com_docente_ultimo += 1
         
         producoes_com_ppg_por_ano[ano] = com_ppg
         producoes_com_estrangeiros_por_ano[ano] = com_estrangeiros
@@ -605,24 +581,34 @@ def cadastro_review(req_id, action, admin_username, reason=""):
                    f"Olá, {df.loc[i,'name']}!\n\nSeu cadastro foi: {status}.\nMotivo: {reason or '—'}")
     return True, f"Solicitação {status.lower()}."
 
-def producao_submit(docente_username, titulo, tipo, ano, veiculo, autores, doi, descricao="", co_autores=""):
+# ✅ NOVO: producao_submit aceita campos de autoria explícitos
+def producao_submit(docente_username, titulo, tipo, ano, veiculo, autores, doi, 
+                    descricao="", co_autores="", discente_primeiro="Não", docente_ultimo="Não"):
     prod_id = str(uuid.uuid4())
-    ws(SHEET_PROD).append_row([prod_id, docente_username, titulo.strip(), tipo, str(ano),
-        veiculo.strip(), autores.strip(), doi.strip(), descricao.strip(), co_autores.strip(),
-        datetime.utcnow().isoformat(timespec="seconds")])
+    ws(SHEET_PROD).append_row([
+        prod_id, docente_username, titulo.strip(), tipo, str(ano),
+        veiculo.strip(), autores.strip(), doi.strip(), descricao.strip(), 
+        co_autores.strip(), discente_primeiro, docente_ultimo,
+        datetime.utcnow().isoformat(timespec="seconds")
+    ])
     clear_cache()
     return prod_id
 
-def producao_update(producao_id, titulo, tipo, ano, veiculo, autores, doi, descricao="", co_autores=""):
+# ✅ NOVO: producao_update atualiza campos de autoria explícitos
+def producao_update(producao_id, titulo, tipo, ano, veiculo, autores, doi, 
+                    descricao="", co_autores="", discente_primeiro="Não", docente_ultimo="Não"):
     df = read_df(SHEET_PROD)
     idx = df.index[df["id"] == producao_id]
     if len(idx) == 0: return False, "Produção não encontrada."
     i = int(idx[0])
     w = ws(SHEET_PROD)
     row_number = i + 2
-    range_name = f"C{row_number}:J{row_number}"
+    # C=titulo, D=tipo, E=ano, F=veiculo, G=autores, H=doi, I=descricao, 
+    # J=co_autores, K=discente_primeiro_autor, L=docente_ultimo_autor
+    range_name = f"C{row_number}:L{row_number}"
     values = [[titulo.strip(), tipo, str(ano), veiculo.strip(), autores.strip(), 
-               doi.strip(), descricao.strip(), co_autores.strip()]]
+               doi.strip(), descricao.strip(), co_autores.strip(), 
+               discente_primeiro, docente_ultimo]]
     w.update(range_name, values)
     clear_cache()
     return True, "Produção atualizada com sucesso!"
@@ -660,6 +646,40 @@ def vinculo_submit(discente_username, orientador_username, producao_id):
     clear_cache()
 
 # ---------------------------------------------------------
+#  COMPONENTE: CHECKBOXES DE AUTORIA
+# ---------------------------------------------------------
+def renderizar_checkboxes_autoria(prefixo, discente_primeiro_default=False, docente_ultimo_default=False):
+    """
+    Renderiza os checkboxes de autoria e retorna os valores "Sim"/"Não".
+    Usado tanto no cadastro quanto na edição.
+    """
+    st.markdown("""
+    <div class="autoria-section">
+        <strong>✍️ Análise de Autoria</strong><br>
+        <small>Marque as opções que se aplicam a esta produção para enriquecer as estatísticas do programa.</small>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_check1, col_check2 = st.columns(2)
+    with col_check1:
+        discente_primeiro = st.checkbox(
+            " Discente do PPG é o 1º autor",
+            value=discente_primeiro_default,
+            key=f"{prefixo}_discente_primeiro",
+            help="Marque se o primeiro nome na lista de autores é um discente do PPG"
+        )
+    with col_check2:
+        docente_ultimo = st.checkbox(
+            "👨‍🏫 Docente do PPG é o último autor",
+            value=docente_ultimo_default,
+            key=f"{prefixo}_docente_ultimo",
+            help="Marque se o último nome na lista de autores é um docente do PPG (geralmente o orientador)"
+        )
+    
+    return ("Sim" if discente_primeiro else "Não", 
+            "Sim" if docente_ultimo else "Não")
+
+# ---------------------------------------------------------
 # SESSION
 # ---------------------------------------------------------
 if "logged" not in st.session_state: st.session_state.logged = False
@@ -678,20 +698,19 @@ with st.sidebar:
         
         if st.button("🌐 Página Pública", use_container_width=True, key="btn_public_sidebar"):
             st.session_state.page = "public"; st.rerun()
-        
-        if st.button(" Área Restrita", use_container_width=True, key="btn_private_sidebar"):
+        if st.button("🔒 Área Restrita", use_container_width=True, key="btn_private_sidebar"):
             st.session_state.page = "private"; st.rerun()
         
         st.divider()
-        if st.button("🚪 Sair", use_container_width=True, key="btn_logout_sidebar"):
+        if st.button(" Sair", use_container_width=True, key="btn_logout_sidebar"):
             st.session_state.logged = False
             st.session_state.user = {}
             st.session_state.page = "public"
             st.rerun()
     else:
-        st.info("🔓 Área Pública")
+        st.info(" Área Pública")
         st.caption("Visualize as produções e estatísticas")
-        if st.button(" Login", use_container_width=True, key="btn_login_sidebar"):
+        if st.button("🔑 Login", use_container_width=True, key="btn_login_sidebar"):
             st.session_state.page = "login"; st.rerun()
 
 # =========================================================
@@ -705,60 +724,49 @@ if st.session_state.page == "public":
     </div>
     """, unsafe_allow_html=True)
     
-    tab_dashboard, tab_producoes = st.tabs(["📊 Dashboard", "📚 Produções Científicas"])
+    tab_dashboard, tab_producoes = st.tabs(["📊 Dashboard", " Produções Científicas"])
     
     with tab_dashboard:
         stats = get_estatisticas_avancadas()
         
-        # ===== SEÇÃO 1: MÉTRICAS GERAIS =====
-        st.subheader("📈 Visão Geral")
-        
+        st.subheader(" Visão Geral")
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-value">{stats['total_producoes']}</div>
                 <div class="metric-label">Total de Produções</div>
-            </div>
-            """, unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
         with c2:
             st.markdown(f"""
             <div class="metric-card-blue">
                 <div class="metric-value">{stats['total_com_ppg']}</div>
                 <div class="metric-label">Com Discentes do PPG</div>
-            </div>
-            """, unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
         with c3:
             st.markdown(f"""
             <div class="metric-card-green">
                 <div class="metric-value">{stats['total_com_estrangeiros']}</div>
                 <div class="metric-label">Com Pesquisadores Estrangeiros</div>
-            </div>
-            """, unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
         with c4:
             percent = (stats['total_com_ppg'] / stats['total_producoes'] * 100) if stats['total_producoes'] > 0 else 0
             st.markdown(f"""
             <div class="metric-card-orange">
                 <div class="metric-value">{percent:.1f}%</div>
                 <div class="metric-label">Participação Discente</div>
-            </div>
-            """, unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
         
         st.divider()
         
-        # ===== SEÇÃO 2: PERIÓDICOS =====
         st.subheader("📰 Análise de Periódicos Científicos")
-        
         col1, col2 = st.columns([1, 2])
-        
         with col1:
             st.markdown(f"""
             <div class="highlight-box">
                 <h3 style="text-align:center; color:#667eea;">📚 {stats['total_periodicos_unicos']}</h3>
                 <p style="text-align:center; margin:0;"><strong>Periódicos diferentes</strong><br>onde o PPG publicou artigos</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
+            </div>""", unsafe_allow_html=True)
         with col2:
             if stats['top_periodicos']:
                 st.markdown("#### 🏆 Top 10 Periódicos Mais Frequentes")
@@ -772,11 +780,8 @@ if st.session_state.page == "public":
         
         st.divider()
         
-        # ===== SEÇÃO 3: COOPERAÇÃO INTERNACIONAL =====
         st.subheader("🌍 Cooperação Internacional")
-        
         col1, col2 = st.columns(2)
-        
         with col1:
             st.markdown("#### 📊 Produções com Pesquisadores Estrangeiros por Ano")
             df_estrangeiros = pd.DataFrame({
@@ -784,65 +789,51 @@ if st.session_state.page == "public":
                 'Com Estrangeiros': list(stats['producoes_com_estrangeiros_por_ano'].values())
             })
             st.bar_chart(df_estrangeiros.set_index('Ano'))
-        
         with col2:
             st.markdown(f"""
             <div class="highlight-box">
                 <h3 style="text-align:center; color:#11998e;">🌐 {stats['total_com_estrangeiros']}</h3>
                 <p style="text-align:center; margin:0;"><strong>Produções com cooperação internacional</strong><br>envolvendo pesquisadores estrangeiros</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
+            </div>""", unsafe_allow_html=True)
             if stats['total_producoes'] > 0:
                 perc_estrangeiros = (stats['total_com_estrangeiros'] / stats['total_producoes'] * 100)
                 st.markdown(f"""
                 <div class="highlight-box" style="background:#e8f5e9;">
                     <p style="text-align:center; margin:0; font-size:1.1rem;">
-                        <strong>{perc_estrangeiros:.1f}%</strong> das produções têm<br>
-                        colaboração internacional
+                        <strong>{perc_estrangeiros:.1f}%</strong> das produções têm<br>colaboração internacional
                     </p>
-                </div>
-                """, unsafe_allow_html=True)
+                </div>""", unsafe_allow_html=True)
         
         st.divider()
         
-        # ===== SEÇÃO 4: ANÁLISE DE AUTORIA =====
         st.subheader("✍️ Análise de Autoria em Artigos")
-        
         st.markdown("""
         <div class="highlight-box" style="background:#fff3e0;">
-        <p><strong>📌 Como funciona esta análise:</strong> O sistema identifica o <strong>primeiro autor</strong> 
-        (nome que aparece no início da lista de autores) e o <strong>último autor</strong> 
-        (nome que aparece no final) de cada artigo, comparando com os docentes e discentes cadastrados no PPG.
-        A prioridade é dada aos dados registrados na aba de participações.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        <p><strong>📌 Como funciona esta análise:</strong> Os docentes marcam <strong>explicitamente</strong> 
+        durante o cadastro/edição da produção se um discente do PPG é o primeiro autor e/ou se um docente 
+        do PPG é o último autor. Para produções antigas sem essa marcação, o sistema usa heurísticas 
+        de comparação de nomes como fallback.</p>
+        </div>""", unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
-        
         with col1:
             st.markdown(f"""
             <div class="metric-card-blue">
                 <div class="metric-value">{stats['artigos_com_discente_primeiro']}</div>
                 <div class="metric-label">🎓 Artigos com Discente do PPG<br>como <strong>1º Autor</strong></div>
-            </div>
-            """, unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
             st.info("💡 Indica liderança discente na pesquisa")
-        
         with col2:
             st.markdown(f"""
             <div class="metric-card-green">
                 <div class="metric-value">{stats['artigos_com_docente_ultimo']}</div>
-                <div class="metric-label">‍🏫 Artigos com Docente do PPG<br>como <strong>Último Autor</strong></div>
-            </div>
-            """, unsafe_allow_html=True)
-            st.info(" Indica orientação docente (último autor geralmente é o orientador)")
+                <div class="metric-label">👨‍🏫 Artigos com Docente do PPG<br>como <strong>Último Autor</strong></div>
+            </div>""", unsafe_allow_html=True)
+            st.info("💡 Indica orientação docente (último autor geralmente é o orientador)")
         
         st.divider()
         
-        # ===== SEÇÃO 5: EVOLUÇÃO TEMPORAL =====
         st.subheader("📅 Evolução Temporal")
-        
         st.markdown("#### Total de Produções por Ano")
         df_total_ano = pd.DataFrame({
             'Ano': list(stats['producoes_por_ano'].keys()),
@@ -852,7 +843,6 @@ if st.session_state.page == "public":
         
         st.divider()
         
-        # ===== SEÇÃO 6: TABELA RESUMO =====
         st.subheader("📋 Resumo Detalhado por Ano")
         df_resumo = pd.DataFrame({
             'Ano': ANOS,
@@ -893,6 +883,18 @@ if st.session_state.page == "public":
                             autor_principal_nome = get_nome_autor_principal(row["docente_username"])
                             st.markdown(f'<span class="main-author-tag">👤 Autor Principal: {autor_principal_nome}</span>', 
                                        unsafe_allow_html=True)
+                            
+                            # ✅ NOVO: Badges de autoria explícita
+                            badges = []
+                            discente_primeiro = str(row.get("discente_primeiro_autor", "")).strip().lower()
+                            docente_ultimo = str(row.get("docente_ultimo_autor", "")).strip().lower()
+                            if discente_primeiro == "sim":
+                                badges.append('<span class="badge-discente-1">🎓 Discente é 1º autor</span>')
+                            if docente_ultimo == "sim":
+                                badges.append('<span class="badge-docente-last">👨‍ Docente é último autor</span>')
+                            if badges:
+                                st.markdown(" ".join(badges), unsafe_allow_html=True)
+                            
                             st.write(f"**Veículo:** {row['veiculo']}")
                             st.write(f"**Autores:** {row['autores']}")
                             st.write(f"**DOI:** {row['doi'] or '—'}")
@@ -918,8 +920,8 @@ if st.session_state.page == "public":
 # LOGIN / CADASTRO
 # =========================================================
 elif st.session_state.page == "login":
-    st.subheader("🔑 Acesso Restrito")
-    tab_login, tab_cad = st.tabs(["🔑 Login", " Cadastro"])
+    st.subheader(" Acesso Restrito")
+    tab_login, tab_cad = st.tabs(["🔑 Login", "📝 Cadastro"])
     
     with tab_login:
         st.markdown("<div class='block-card'>", unsafe_allow_html=True)
@@ -1024,7 +1026,7 @@ elif st.session_state.page == "private":
             if df_prod.empty: st.info("Sem produções.")
             else:
                 for ano in ANOS:
-                    st.markdown(f"### 📅 {ano}")
+                    st.markdown(f"###  {ano}")
                     subset = df_prod[df_prod["ano"].astype(str).str.strip() == ano]
                     if subset.empty: st.write("— Nenhuma produção registrada —")
                     else:
@@ -1059,7 +1061,7 @@ elif st.session_state.page == "private":
                         veiculo = st.text_input("Veículo/Periódico", key="admin_prod_veiculo")
                         autores = st.text_input("Autores (separados por vírgula, na ordem)", key="admin_prod_autores")
                         doi = st.text_input("DOI (opcional)", key="admin_prod_doi")
-                    descricao = st.text_area("📝 Descrição qualitativa (opcional)",
+                    descricao = st.text_area(" Descrição qualitativa (opcional)",
                         placeholder="Descreva o contexto, relevância, impacto...", height=100, key="admin_prod_descricao")
                     st.markdown("**👥 Co-autores do PPG (opcional)**")
                     docentes_list = listar_docentes()
@@ -1069,11 +1071,17 @@ elif st.session_state.page == "private":
                         docentes_list, key="admin_prod_coautores")
                     co_autores_usernames = ",".join([
                         get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
+                    
+                    # ✅ NOVO: Checkboxes de autoria no cadastro admin
+                    discente_primeiro_str, docente_ultimo_str = renderizar_checkboxes_autoria("admin_cad")
+                    
                     submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
                     if submitted:
                         if not titulo.strip(): st.error("Título é obrigatório.")
                         else:
-                            producao_submit(selected_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
+                            producao_submit(selected_username, titulo, tipo, ano, veiculo, 
+                                           autores, doi, descricao, co_autores_usernames,
+                                           discente_primeiro_str, docente_ultimo_str)
                             st.success(f"Produção cadastrada para {selected_label.split(' (')[0]}!")
                             st.rerun()
         st.divider()
@@ -1082,7 +1090,7 @@ elif st.session_state.page == "private":
     # PAINEL DOCENTE
     # =========================================================
     elif user_role == "docente":
-        st.subheader(f"📚 Minhas produções — {user.get('name','')}")
+        st.subheader(f" Minhas produções — {user.get('name','')}")
         df_prod = read_df(SHEET_PROD)
         df_part = read_df(SHEET_PART)
         todas_producoes = get_minhas_producoes(user_username)
@@ -1094,19 +1102,31 @@ elif st.session_state.page == "private":
             for ano in ANOS:
                 subset = todas_producoes[todas_producoes["ano"].astype(str).str.strip() == ano]
                 if not subset.empty:
-                    st.markdown(f"#### 📅 {ano}")
+                    st.markdown(f"####  {ano}")
                     for _, row in subset.iterrows():
                         eh_principal = row.get("tipo_autoria", "") == "principal"
                         with st.expander(f"**{row['titulo']}** — {row['tipo']}"):
                             autor_principal_nome = get_nome_autor_principal(row["docente_username"])
-                            st.markdown(f'<span class="main-author-tag">👤 Autor Principal: {autor_principal_nome}</span>', 
+                            st.markdown(f'<span class="main-author-tag"> Autor Principal: {autor_principal_nome}</span>', 
                                        unsafe_allow_html=True)
                             if eh_principal:
-                                st.markdown('<span class="autor-principal-badge"> Você é o responsável pelo cadastro</span>', 
+                                st.markdown('<span class="autor-principal-badge">📝 Você é o responsável pelo cadastro</span>', 
                                            unsafe_allow_html=True)
                             else:
-                                st.markdown('<span class="coautor-badge"> Você participa como co-autor</span>', 
+                                st.markdown('<span class="coautor-badge">👥 Você participa como co-autor</span>', 
                                            unsafe_allow_html=True)
+                            
+                            # ✅ NOVO: Badges de autoria explícita
+                            badges = []
+                            discente_primeiro = str(row.get("discente_primeiro_autor", "")).strip().lower()
+                            docente_ultimo = str(row.get("docente_ultimo_autor", "")).strip().lower()
+                            if discente_primeiro == "sim":
+                                badges.append('<span class="badge-discente-1">🎓 Discente é 1º autor</span>')
+                            if docente_ultimo == "sim":
+                                badges.append('<span class="badge-docente-last">👨‍🏫 Docente é último autor</span>')
+                            if badges:
+                                st.markdown(" ".join(badges), unsafe_allow_html=True)
+                            
                             st.write(f"**Veículo:** {row['veiculo']}")
                             st.write(f"**Autores:** {row['autores']}")
                             st.write(f"**DOI:** {row['doi'] or '—'}")
@@ -1124,7 +1144,7 @@ elif st.session_state.page == "private":
                                     if st.button("✏️ Editar", key=f"edit_{row['id']}", use_container_width=True):
                                         st.session_state['editing_prod_id'] = row['id']; st.rerun()
                                 with col2:
-                                    if st.button("🗑️ Excluir", key=f"del_{row['id']}", use_container_width=True):
+                                    if st.button("️ Excluir", key=f"del_{row['id']}", use_container_width=True):
                                         st.session_state['deleting_prod_id'] = row['id']; st.rerun()
                             else:
                                 st.info("💡 Co-autores podem visualizar, mas não editar/excluir esta produção.")
@@ -1151,6 +1171,10 @@ elif st.session_state.page == "private":
                 docentes_list, key="prod_coautores")
             co_autores_usernames = ",".join([
                 get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
+            
+            # ✅ NOVO: Checkboxes de autoria no cadastro docente
+            discente_primeiro_str, docente_ultimo_str = renderizar_checkboxes_autoria("docente_cad")
+            
             submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
             if submitted:
                 if not titulo.strip():
@@ -1162,7 +1186,7 @@ elif st.session_state.page == "private":
                             autor_principal = users_get(duplicata["docente_username"])
                             autor_nome = autor_principal["name"] if autor_principal else duplicata["docente_username"]
                             st.error(f"""
-                            ️ **Produção já cadastrada!**
+                            ⚠️ **Produção já cadastrada!**
                             **DOI:** {duplicata.get('doi', 'N/A')}  
                             **Cadastrada por:** {autor_nome}  
                             **Data:** {duplicata.get('created_at', 'N/A')}
@@ -1176,10 +1200,14 @@ elif st.session_state.page == "private":
                                     else: st.error(msg)
                             with col2:
                                 if st.button("❌ Não, cadastrar como nova", key="btn_forcar_nova"):
-                                    producao_submit(user_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
+                                    producao_submit(user_username, titulo, tipo, ano, veiculo, 
+                                                   autores, doi, descricao, co_autores_usernames,
+                                                   discente_primeiro_str, docente_ultimo_str)
                                     st.success("Produção cadastrada!"); st.rerun()
                         else:
-                            producao_submit(user_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
+                            producao_submit(user_username, titulo, tipo, ano, veiculo, 
+                                           autores, doi, descricao, co_autores_usernames,
+                                           discente_primeiro_str, docente_ultimo_str)
                             st.success("Produção cadastrada com sucesso!"); st.rerun()
         
         # Edição
@@ -1203,7 +1231,7 @@ elif st.session_state.page == "private":
                         autores = st.text_input("Autores (separados por vírgula, na ordem)", value=prod_data['autores'], key=f"edit_autores_{pid}")
                         doi = st.text_input("DOI", value=prod_data['doi'], key=f"edit_doi_{pid}")
                     descricao_atual = str(prod_data.get('descricao', '')).strip()
-                    descricao = st.text_area(" Descrição qualitativa", value=descricao_atual,
+                    descricao = st.text_area("📝 Descrição qualitativa", value=descricao_atual,
                         placeholder="Descreva o contexto, relevância, impacto...", height=100, key=f"edit_descricao_{pid}")
                     st.markdown("**👥 Co-autores do PPG**")
                     co_autores_atuais_str = str(prod_data.get('co_autores', '')).strip() if "co_autores" in prod_data.index else ""
@@ -1217,8 +1245,15 @@ elif st.session_state.page == "private":
                         "Selecione co-autores:", docentes_list, default=co_autores_nomes, key=f"edit_coautores_{pid}")
                     co_autores_usernames = ",".join([
                         get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
+                    
+                    # ✅ NOVO: Checkboxes de autoria na edição (com valores atuais)
+                    discente_primeiro_atual = str(prod_data.get('discente_primeiro_autor', '')).strip().lower() == "sim"
+                    docente_ultimo_atual = str(prod_data.get('docente_ultimo_autor', '')).strip().lower() == "sim"
+                    discente_primeiro_str, docente_ultimo_str = renderizar_checkboxes_autoria(
+                        f"edit_{pid}", discente_primeiro_atual, docente_ultimo_atual)
+                    
                     st.divider()
-                    st.subheader(" Participações")
+                    st.subheader("👥 Participações")
                     parts_current = df_part[df_part["producao_id"] == pid] if not df_part.empty else pd.DataFrame()
                     if not parts_current.empty:
                         st.dataframe(parts_current[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
@@ -1233,7 +1268,9 @@ elif st.session_state.page == "private":
                     with c_save2:
                         if st.form_submit_button("💾 Salvar", use_container_width=True):
                             if titulo.strip():
-                                ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
+                                ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, 
+                                                         autores, doi, descricao, co_autores_usernames,
+                                                         discente_primeiro_str, docente_ultimo_str)
                                 if ok: st.session_state.pop('editing_prod_id', None); st.success(msg); st.rerun()
                     with c_cancel:
                         if st.form_submit_button("❌ Cancelar", use_container_width=True):
@@ -1247,7 +1284,7 @@ elif st.session_state.page == "private":
             prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
             if prod_data is not None:
                 st.error(f"🗑️ Excluir: {prod_data['titulo']}")
-                st.warning("️ Esta ação não pode ser desfeita!")
+                st.warning("⚠️ Esta ação não pode ser desfeita!")
                 c1, c2 = st.columns(2)
                 with c1:
                     if st.button("Sim, excluir", type="primary", use_container_width=True, key=f"btn_confirm_del_{pid}"):
@@ -1285,7 +1322,7 @@ elif st.session_state.page == "private":
                         st.write(f"**Tipo:** {row['tipo']} | **Veículo:** {row['veiculo']}")
                         descricao_text = str(row.get('descricao', '')).strip()
                         if descricao_text:
-                            st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{descricao_text}</div>', 
+                            st.markdown(f'<div class="descricao-box"><b> Descrição:</b><br>{descricao_text}</div>', 
                                        unsafe_allow_html=True)
                         if ja: st.success("Você já registrou participação.")
                         else:
