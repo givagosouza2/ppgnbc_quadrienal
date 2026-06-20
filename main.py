@@ -767,44 +767,44 @@ elif st.session_state.page == "private":
             if hist.empty: st.info("Sem histórico.")
             else: st.dataframe(hist, use_container_width=True)
 
-        ##with t6:
-        ##    st.subheader("➕ Cadastrar nova produção para um docente")
-        ##    docentes_df = df_users[df_users["role"].str.lower().isin(["docente", "professor"])] if not df_users.empty else pd.DataFrame()
-        ##    if docentes_df.empty:
-        ##        st.info("Nenhum docente cadastrado no sistema ainda.")
-        ##    else:
-        ##        docente_options = {f"{row['name']} ({row['username']})": row['username'] for _, row in docentes_df.iterrows()}
-        ##        selected_label = st.selectbox("Selecione o Docente", list(docente_options.keys()))
-        ##       selected_username = docente_options[selected_label]
-        ##        st.divider()
-        ##        with st.form("admin_form_prod"):
-        ##            c1, c2 = st.columns(2)
-        ##            with c1:
-        ##                titulo = st.text_input("Título", key="admin_prod_titulo")
-        ##                tipo = st.selectbox("Tipo", TIPOS_PRODUCAO, key="admin_prod_tipo")
-        ##                ano = st.selectbox("Ano", ANOS, key="admin_prod_ano")
-        ##            with c2:
-        ##                veiculo = st.text_input("Veículo/Periódico", key="admin_prod_veiculo")
-        ##                autores = st.text_input("Autores", key="admin_prod_autores")
-        ##                doi = st.text_input("DOI (opcional)", key="admin_prod_doi")
-        ##            descricao = st.text_area("📝 Descrição qualitativa (opcional)",
-        ##                placeholder="Descreva o contexto, relevância, impacto...", height=100, key="admin_prod_descricao")
-        ##            st.markdown("**👥 Co-autores do PPG (opcional)**")
-        ##            docentes_list = listar_docentes()
-        ##            docentes_list = [d for d in docentes_list if d != selected_label.split(" (")[0]]
-        ##            co_autores_selecionados = st.multiselect(
-        ##                "Selecione outros docentes do PPG que são co-autores:",
-        ##                docentes_list, key="admin_prod_coautores")
-        ##            co_autores_usernames = ",".join([
-        ##                get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
-        ##            submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
-        ##            if submitted:
-        ##                if not titulo.strip(): st.error("Título é obrigatório.")
-        ##                else:
-        ##                    producao_submit(selected_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
-        ##                   st.success(f"Produção cadastrada para {selected_label.split(' (')[0]}!")
-        ##                    st.rerun()
-        ##st.divider()
+        with t6:
+            st.subheader("➕ Cadastrar nova produção para um docente")
+            docentes_df = df_users[df_users["role"].str.lower().isin(["docente", "professor"])] if not df_users.empty else pd.DataFrame()
+            if docentes_df.empty:
+                st.info("Nenhum docente cadastrado no sistema ainda.")
+            else:
+                docente_options = {f"{row['name']} ({row['username']})": row['username'] for _, row in docentes_df.iterrows()}
+                selected_label = st.selectbox("Selecione o Docente", list(docente_options.keys()))
+                selected_username = docente_options[selected_label]
+                st.divider()
+                with st.form("admin_form_prod"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        titulo = st.text_input("Título", key="admin_prod_titulo")
+                        tipo = st.selectbox("Tipo", TIPOS_PRODUCAO, key="admin_prod_tipo")
+                        ano = st.selectbox("Ano", ANOS, key="admin_prod_ano")
+                    with c2:
+                        veiculo = st.text_input("Veículo/Periódico", key="admin_prod_veiculo")
+                        autores = st.text_input("Autores", key="admin_prod_autores")
+                        doi = st.text_input("DOI (opcional)", key="admin_prod_doi")
+                        descricao = st.text_area("📝 Descrição qualitativa (opcional)",
+                        placeholder="Descreva o contexto, relevância, impacto...", height=100, key="admin_prod_descricao")
+                    st.markdown("**👥 Co-autores do PPG (opcional)**")
+                    docentes_list = listar_docentes()
+                    docentes_list = [d for d in docentes_list if d != selected_label.split(" (")[0]]
+                    co_autores_selecionados = st.multiselect(
+                        "Selecione outros docentes do PPG que são co-autores:",
+                        docentes_list, key="admin_prod_coautores")
+                    co_autores_usernames = ",".join([
+                        get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
+                    submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
+                    if submitted:
+                        if not titulo.strip(): st.error("Título é obrigatório.")
+                        else:
+                            producao_submit(selected_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
+                            st.success(f"Produção cadastrada para {selected_label.split(' (')[0]}!")
+                            st.rerun()
+        st.divider()
 
     # =========================================================
     # PAINEL DOCENTE
@@ -858,57 +858,57 @@ elif st.session_state.page == "private":
                                 st.info("💡 Co-autores podem visualizar, mas não editar/excluir esta produção.")
         
         st.divider()
-        st.subheader("➕ Cadastrar nova produção")
-        with st.form("form_prod"):
-            c1, c2 = st.columns(2)
-            with c1:
-                titulo = st.text_input("Título", key="prod_titulo")
-                tipo = st.selectbox("Tipo", TIPOS_PRODUCAO, key="prod_tipo")
-                ano = st.selectbox("Ano", ANOS, key="prod_ano")
-            with c2:
-                veiculo = st.text_input("Veículo/Periódico", key="prod_veiculo")
-                autores = st.text_input("Autores", key="prod_autores")
-                doi = st.text_input("DOI (opcional)", key="prod_doi")
-            descricao = st.text_area("📝 Descrição qualitativa (opcional)",
-                placeholder="Descreva o contexto, relevância, impacto...", height=100, key="prod_descricao")
-            st.markdown("** Co-autores do PPG (opcional)**")
-            docentes_list = listar_docentes()
-            docentes_list = [d for d in docentes_list if d != user.get('name', '')]
-            co_autores_selecionados = st.multiselect(
-                "Selecione outros docentes do PPG que são co-autores:",
-                docentes_list, key="prod_coautores")
-            co_autores_usernames = ",".join([
-                get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
-            submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
-            if submitted:
-                if not titulo.strip():
-                    st.error("Título é obrigatório.")
-                else:
-                    if doi or titulo:
-                        duplicata = verificar_duplicacao(doi, titulo)
-                        if duplicata is not None:
-                            autor_principal = users_get(duplicata["docente_username"])
-                            autor_nome = autor_principal["name"] if autor_principal else duplicata["docente_username"]
-                            st.error(f"""
-                            ⚠️ **Produção já cadastrada!**
-                            **DOI:** {duplicata.get('doi', 'N/A')}  
-                            **Cadastrada por:** {autor_nome}  
-                            **Data:** {duplicata.get('created_at', 'N/A')}
-                            Deseja se adicionar como co-autor ao invés de criar nova?
-                            """)
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                if st.button("✅ Sim, adicionar como co-autor", key="btn_coautor_submit"):
-                                    ok, msg = adicionar_co_autor(duplicata["id"], user_username)
-                                    if ok: st.success(msg); st.balloons(); time.sleep(2); st.rerun()
-                                    else: st.error(msg)
-                            with col2:
-                                if st.button("❌ Não, cadastrar como nova", key="btn_forcar_nova"):
-                                    producao_submit(user_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
-                                    st.success("Produção cadastrada!"); st.rerun()
-                        else:
-                            producao_submit(user_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
-                            st.success("Produção cadastrada com sucesso!"); st.rerun()
+        ##st.subheader("➕ Cadastrar nova produção")
+        ##with st.form("form_prod"):
+        ##    c1, c2 = st.columns(2)
+        ##    with c1:
+        ##        titulo = st.text_input("Título", key="prod_titulo")
+        ##        tipo = st.selectbox("Tipo", TIPOS_PRODUCAO, key="prod_tipo")
+        ##        ano = st.selectbox("Ano", ANOS, key="prod_ano")
+        ##    with c2:
+        ##        veiculo = st.text_input("Veículo/Periódico", key="prod_veiculo")
+        ##        autores = st.text_input("Autores", key="prod_autores")
+        ##       doi = st.text_input("DOI (opcional)", key="prod_doi")
+        ##    descricao = st.text_area("📝 Descrição qualitativa (opcional)",
+        ##        placeholder="Descreva o contexto, relevância, impacto...", height=100, key="prod_descricao")
+        ##    st.markdown("** Co-autores do PPG (opcional)**")
+        ##    docentes_list = listar_docentes()
+        ##    docentes_list = [d for d in docentes_list if d != user.get('name', '')]
+        ##    co_autores_selecionados = st.multiselect(
+        ##        "Selecione outros docentes do PPG que são co-autores:",
+        ##        docentes_list, key="prod_coautores")
+        ##   co_autores_usernames = ",".join([
+        ##        get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
+        ##    submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
+        ##   if submitted:
+        ##        if not titulo.strip():
+        ##            st.error("Título é obrigatório.")
+        ##        else:
+        ##            if doi or titulo:
+        ##                duplicata = verificar_duplicacao(doi, titulo)
+        ##                if duplicata is not None:
+        ##                    autor_principal = users_get(duplicata["docente_username"])
+        ##                    autor_nome = autor_principal["name"] if autor_principal else duplicata["docente_username"]
+        ##                    st.error(f"""
+        ##                    ⚠️ **Produção já cadastrada!**
+        ##                    **DOI:** {duplicata.get('doi', 'N/A')}  
+        ##                    **Cadastrada por:** {autor_nome}  
+        ##                    **Data:** {duplicata.get('created_at', 'N/A')}
+        ##                    Deseja se adicionar como co-autor ao invés de criar nova?
+        ##                    """)
+        ##                    col1, col2 = st.columns(2)
+        ##                    with col1:
+        ##                        if st.button("✅ Sim, adicionar como co-autor", key="btn_coautor_submit"):
+        ##                            ok, msg = adicionar_co_autor(duplicata["id"], user_username)
+        ##                            if ok: st.success(msg); st.balloons(); time.sleep(2); st.rerun()
+        ##                            else: st.error(msg)
+        ##                    with col2:
+        ##                        if st.button("❌ Não, cadastrar como nova", key="btn_forcar_nova"):
+        ##                            producao_submit(user_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
+        ##                            st.success("Produção cadastrada!"); st.rerun()
+        ##                else:
+        ##                    producao_submit(user_username, titulo, tipo, ano, veiculo, autores, doi, descricao, co_autores_usernames)
+        ##                    st.success("Produção cadastrada com sucesso!"); st.rerun()
         
         # Edição
         if 'editing_prod_id' in st.session_state:
