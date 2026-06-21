@@ -1,4 +1,4 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v6.0 - Orientações, Ensino e Impacto)
+# app.py — Sistema de Monitoramento de Produção do PPG (v6.1 - Orientações Simplificadas)
 # Streamlit + Google Sheets + E-mails
 # =========================================================
 
@@ -41,9 +41,9 @@ SHEET_CAD     = "cadastro_requests"
 SHEET_PROD    = "producoes"
 SHEET_PART    = "participacoes"
 SHEET_VINC    = "vinculos_discentes"
-SHEET_ORIENT  = "orientacoes"          # 🆕
-SHEET_ENSINO  = "atividades_ensino"    # 🆕
-SHEET_IMPACTO = "atividades_impacto"   # 🆕
+SHEET_ORIENT  = "orientacoes"
+SHEET_ENSINO  = "atividades_ensino"
+SHEET_IMPACTO = "atividades_impacto"
 
 HEADERS_USERS   = ["username", "name", "email", "role", "orientador", "password_hash", "created_at"]
 HEADERS_CAD     = ["id", "name", "username", "email", "role", "orientador",
@@ -56,9 +56,9 @@ HEADERS_PART    = ["id", "producao_id", "tipo_participacao",
                    "nome_participante", "vinculo", "created_at"]
 HEADERS_VINC    = ["id", "discente_username", "orientador_username",
                    "producao_id", "created_at"]
-# 🆕 Cabeçalhos das novas abas
-HEADERS_ORIENT  = ["id", "docente_username", "discente_nome", "tipo", "titulo",
-                   "ano_inicio", "ano_conclusao", "status", "instituicao", "observacoes", "created_at"]
+# ✅ Simplificado: sem título, instituição ou observações
+HEADERS_ORIENT  = ["id", "docente_username", "discente_nome", "tipo", 
+                   "ano_inicio", "ano_conclusao", "status", "created_at"]
 HEADERS_ENSINO  = ["id", "docente_username", "tipo", "titulo", "periodo", "ano",
                    "carga_horaria", "nivel", "descricao", "created_at"]
 HEADERS_IMPACTO = ["id", "docente_username", "tipo", "titulo", "descricao",
@@ -77,12 +77,8 @@ TIPOS_PARTICIPACAO = [
     "Pesquisador estrangeiro", "Pesquisador nacional/institucional",
 ]
 
-# 🆕 Tipos para as novas categorias
-TIPOS_ORIENTACAO = [
-    "Iniciação Científica", "TCC (Graduação)", "Mestrado", "Doutorado",
-    "Pós-Doutorado", "Orientação concluída - TCC", 
-    "Orientação concluída - Mestrado", "Orientação concluída - Doutorado",
-]
+# ✅ Simplificado: apenas Mestrado e Doutorado
+TIPOS_ORIENTACAO = ["Mestrado", "Doutorado"]
 
 STATUS_ORIENTACAO = ["Em andamento", "Concluída", "Trancada", "Abandonada"]
 
@@ -251,9 +247,9 @@ def ensure_worksheets(_sh):
         (SHEET_USERS, HEADERS_USERS), (SHEET_CAD, HEADERS_CAD),
         (SHEET_PROD, HEADERS_PROD),   (SHEET_PART, HEADERS_PART),
         (SHEET_VINC, HEADERS_VINC),
-        (SHEET_ORIENT, HEADERS_ORIENT),     # 🆕
-        (SHEET_ENSINO, HEADERS_ENSINO),     # 🆕
-        (SHEET_IMPACTO, HEADERS_IMPACTO),   # 🆕
+        (SHEET_ORIENT, HEADERS_ORIENT),
+        (SHEET_ENSINO, HEADERS_ENSINO),
+        (SHEET_IMPACTO, HEADERS_IMPACTO),
     ]
     for title, headers in targets:
         if title not in wmap:
@@ -390,15 +386,14 @@ def get_nome_autor_principal(username):
     return user_data["name"] if user_data else username
 
 # ---------------------------------------------------------
-# 🆕 CRUD DE ORIENTAÇÕES
+# 🆕 CRUD DE ORIENTAÇÕES (SIMPLIFICADO)
 # ---------------------------------------------------------
-def orientacao_submit(docente_username, discente_nome, tipo, titulo, ano_inicio, 
-                      ano_conclusao, status, instituicao, observacoes=""):
+def orientacao_submit(docente_username, discente_nome, tipo, ano_inicio, ano_conclusao, status):
     orient_id = str(uuid.uuid4())
     ws(SHEET_ORIENT).append_row([
-        orient_id, docente_username, discente_nome.strip(), tipo, titulo.strip(),
-        str(ano_inicio), str(ano_conclusao), status, instituicao.strip(),
-        observacoes.strip(), datetime.utcnow().isoformat(timespec="seconds")
+        orient_id, docente_username, discente_nome.strip(), tipo,
+        str(ano_inicio).strip(), str(ano_conclusao).strip(), status,
+        datetime.utcnow().isoformat(timespec="seconds")
     ])
     clear_cache()
     return orient_id
@@ -487,9 +482,9 @@ def tem_pesquisador_estrangeiro(producao_id):
 
 def get_estatisticas_avancadas():
     df_prod = read_df(SHEET_PROD)
-    df_orient = read_df(SHEET_ORIENT)       # 🆕
-    df_ensino = read_df(SHEET_ENSINO)       # 🆕
-    df_impacto = read_df(SHEET_IMPACTO)     # 🆕
+    df_orient = read_df(SHEET_ORIENT)
+    df_ensino = read_df(SHEET_ENSINO)
+    df_impacto = read_df(SHEET_IMPACTO)
     
     total_producoes = len(df_prod)
     producoes_por_ano = {}
@@ -537,7 +532,6 @@ def get_estatisticas_avancadas():
         total_com_ppg += com_ppg
         total_com_estrangeiros += com_estrangeiros
     
-    # 🆕 Estatísticas das novas categorias
     total_orientacoes = len(df_orient)
     total_ensino = len(df_ensino)
     total_impacto = len(df_impacto)
@@ -561,7 +555,6 @@ def get_estatisticas_avancadas():
         "top_periodicos": top_periodicos,
         "artigos_com_discente_primeiro": artigos_com_discente_primeiro,
         "artigos_com_docente_ultimo": artigos_com_docente_ultimo,
-        # 🆕 Novas estatísticas
         "total_orientacoes": total_orientacoes,
         "total_ensino": total_ensino,
         "total_impacto": total_impacto,
@@ -704,15 +697,14 @@ def renderizar_checkboxes_autoria(prefixo, discente_primeiro_default=False, doce
             "Sim" if docente_ultimo else "Não")
 
 # ---------------------------------------------------------
-# 🆕 FUNÇÕES DE BADGE DE STATUS
+# BADGE DE STATUS
 # ---------------------------------------------------------
 def badge_status(status):
     status_lower = str(status).strip().lower()
-    if status_lower in ["em andamento", "concluída", "concluida"]:
-        if status_lower.startswith("em"):
-            return f'<span class="status-andamento">⏳ {status}</span>'
-        else:
-            return f'<span class="status-concluida">✅ {status}</span>'
+    if status_lower in ["em andamento"]:
+        return f'<span class="status-andamento">⏳ {status}</span>'
+    elif status_lower in ["concluída", "concluida"]:
+        return f'<span class="status-concluida">✅ {status}</span>'
     else:
         return f'<span class="status-outro">⚠️ {status}</span>'
 
@@ -751,7 +743,7 @@ with st.sidebar:
             st.session_state.page = "login"; st.rerun()
 
 # =========================================================
-# PÁGINA PÚBLICA (SEM LOGIN) - DASHBOARD AVANÇADO
+# PÁGINA PÚBLICA (SEM LOGIN)
 # =========================================================
 if st.session_state.page == "public":
     st.markdown("""
@@ -797,7 +789,6 @@ if st.session_state.page == "public":
                 <div class="metric-label">Participação Discente</div>
             </div>""", unsafe_allow_html=True)
         
-        # 🆕 Seção de atividades acadêmicas complementares
         st.divider()
         st.subheader("🎓 Atividades Acadêmicas Complementares")
         
@@ -1008,16 +999,13 @@ if st.session_state.page == "public":
             for _, row in df_ori_filt.iterrows():
                 docente_user = users_get(row["docente_username"]) if not df_users.empty else None
                 docente_nome = docente_user["name"] if docente_user else row["docente_username"]
+                ano_conc_display = str(row.get('ano_conclusao', '')).strip() if str(row.get('ano_conclusao', '')).strip() else "em andamento"
                 
-                with st.expander(f"**{row['titulo']}** — {row['tipo']} ({row['ano_inicio']} → {row['ano_conclusao'] or '?'})"):
+                with st.expander(f"**{row['discente_nome']}** — {row['tipo']} ({row['ano_inicio']} → {ano_conc_display})"):
                     st.markdown(badge_status(row['status']), unsafe_allow_html=True)
                     st.write(f"**Orientador(a):** {docente_nome}")
-                    st.write(f"**Discente:** {row['discente_nome']}")
-                    st.write(f"**Instituição:** {row['instituicao'] or '—'}")
-                    obs = str(row.get('observacoes', '')).strip()
-                    if obs:
-                        st.markdown(f'<div class="descricao-box"><b>📝 Observações:</b><br>{obs}</div>', 
-                                   unsafe_allow_html=True)
+                    st.write(f"**Ano de entrada:** {row['ano_inicio']}")
+                    st.write(f"**Ano de saída:** {row['ano_conclusao'] or '—'}")
     
     # 🆕 ABA DE ENSINO PÚBLICA
     with tab_ensino_pub:
@@ -1162,18 +1150,17 @@ elif st.session_state.page == "private":
         df_prod = read_df(SHEET_PROD)
         df_part = read_df(SHEET_PART)
         df_vinc = read_df(SHEET_VINC)
-        df_orient = read_df(SHEET_ORIENT)       # 🆕
-        df_ensino = read_df(SHEET_ENSINO)       # 🆕
-        df_impacto = read_df(SHEET_IMPACTO)     # 🆕
+        df_orient = read_df(SHEET_ORIENT)
+        df_ensino = read_df(SHEET_ENSINO)
+        df_impacto = read_df(SHEET_IMPACTO)
 
-        # 🆕 Tabs expandidos
         t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs([
             "👥 Usuários", "👤 Cadastros pendentes", "📚 Produções (geral)", 
             "📊 Resumo por ano", "⚙️ Histórico", 
             "➕ Cadastrar Produção", 
-            "🎓 Orientações",       # 🆕
-            "📖 Ensino",            # 🆕
-            "🌍 Impacto"            # 🆕
+            "🎓 Orientações",
+            "📖 Ensino",
+            "🌍 Impacto"
         ])
 
         with t1:
@@ -1270,7 +1257,7 @@ elif st.session_state.page == "private":
                             st.success(f"Produção cadastrada para {selected_label.split(' (')[0]}!")
                             st.rerun()
         
-        # 🆕 TAB ORIENTAÇÕES
+        # 🆕 TAB ORIENTAÇÕES (SIMPLIFICADO)
         with t7:
             st.subheader("🎓 Orientações Acadêmicas")
             docentes_df = df_users[df_users["role"].str.lower().isin(["docente", "professor"])] if not df_users.empty else pd.DataFrame()
@@ -1287,24 +1274,21 @@ elif st.session_state.page == "private":
                 with st.form("form_orient"):
                     c1, c2 = st.columns(2)
                     with c1:
-                        discente_nome = st.text_input("Nome do discente", key="ori_discente")
+                        discente_nome = st.text_input("Nome do orientando", key="ori_discente")
                         tipo = st.selectbox("Tipo de orientação", TIPOS_ORIENTACAO, key="ori_tipo")
-                        titulo = st.text_input("Título da orientação/trabalho", key="ori_titulo")
-                        status = st.selectbox("Status", STATUS_ORIENTACAO, key="ori_status")
+                        ano_inicio = st.text_input("Ano de entrada", placeholder="Ex: 2023", key="ori_ano_ini")
                     with c2:
-                        instituicao = st.text_input("Instituição do discente", key="ori_inst")
-                        ano_inicio = st.selectbox("Ano de início", ANOS, key="ori_ano_ini")
-                        anos_concl = [""] + ANOS
-                        ano_conclusao = st.selectbox("Ano de conclusão (se aplicável)", anos_concl, key="ori_ano_conc")
-                        observacoes = st.text_area("Observações (opcional)", height=80, key="ori_obs")
+                        status = st.selectbox("Status", STATUS_ORIENTACAO, key="ori_status")
+                        ano_conclusao = st.text_input("Ano de saída (se aplicável)", 
+                                                       placeholder="Ex: 2025 ou vazio", key="ori_ano_conc")
                     
                     submitted = st.form_submit_button("💾 Cadastrar orientação", use_container_width=True)
                     if submitted:
-                        if not discente_nome.strip() or not titulo.strip():
-                            st.error("Nome do discente e título são obrigatórios.")
+                        if not discente_nome.strip() or not ano_inicio.strip():
+                            st.error("Nome do orientando e ano de entrada são obrigatórios.")
                         else:
-                            orientacao_submit(selected_username, discente_nome, tipo, titulo,
-                                             ano_inicio, ano_conclusao, status, instituicao, observacoes)
+                            orientacao_submit(selected_username, discente_nome, tipo,
+                                             ano_inicio, ano_conclusao, status)
                             st.success(f"Orientação cadastrada para {selected_label.split(' (')[0]}!")
                             st.rerun()
                 
@@ -1318,14 +1302,11 @@ elif st.session_state.page == "private":
                         st.info(f"Sem orientações para {selected_label.split(' (')[0]}.")
                     else:
                         for _, row in ori_docente.iterrows():
-                            with st.expander(f"**{row['titulo']}** — {row['tipo']} ({row['ano_inicio']} → {row['ano_conclusao'] or '?'})"):
+                            ano_conc_display = str(row.get('ano_conclusao', '')).strip() if str(row.get('ano_conclusao', '')).strip() else "em andamento"
+                            with st.expander(f"**{row['discente_nome']}** — {row['tipo']} ({row['ano_inicio']} → {ano_conc_display})"):
                                 st.markdown(badge_status(row['status']), unsafe_allow_html=True)
-                                st.write(f"**Discente:** {row['discente_nome']}")
-                                st.write(f"**Instituição:** {row['instituicao'] or '—'}")
-                                obs = str(row.get('observacoes', '')).strip()
-                                if obs:
-                                    st.markdown(f'<div class="descricao-box"><b>📝 Observações:</b><br>{obs}</div>', 
-                                               unsafe_allow_html=True)
+                                st.write(f"**Ano de entrada:** {row['ano_inicio']}")
+                                st.write(f"**Ano de saída:** {row['ano_conclusao'] or '—'}")
                                 if st.button("🗑️ Excluir", key=f"del_ori_{row['id']}", use_container_width=True):
                                     ok, msg = orientacao_delete(row['id'])
                                     if ok: st.success(msg); st.rerun()
