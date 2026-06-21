@@ -1,4 +1,4 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v6.1 - Orientações Simplificadas)
+# app.py — Sistema de Monitoramento de Produção do PPG (v6.2 - Visual e Ordenação)
 # Streamlit + Google Sheets + E-mails
 # =========================================================
 
@@ -56,7 +56,6 @@ HEADERS_PART    = ["id", "producao_id", "tipo_participacao",
                    "nome_participante", "vinculo", "created_at"]
 HEADERS_VINC    = ["id", "discente_username", "orientador_username",
                    "producao_id", "created_at"]
-# ✅ Simplificado: sem título, instituição ou observações
 HEADERS_ORIENT  = ["id", "docente_username", "discente_nome", "tipo", 
                    "ano_inicio", "ano_conclusao", "status", "created_at"]
 HEADERS_ENSINO  = ["id", "docente_username", "tipo", "titulo", "periodo", "ano",
@@ -77,9 +76,7 @@ TIPOS_PARTICIPACAO = [
     "Pesquisador estrangeiro", "Pesquisador nacional/institucional",
 ]
 
-# ✅ Simplificado: apenas Mestrado e Doutorado
 TIPOS_ORIENTACAO = ["Mestrado", "Doutorado"]
-
 STATUS_ORIENTACAO = ["Em andamento", "Concluída", "Trancada", "Abandonada"]
 
 TIPOS_ENSINO = [
@@ -135,6 +132,10 @@ st.markdown("""
 .status-andamento { background:#fff3cd; color:#856404; padding:3px 8px; border-radius:10px; font-size:0.8rem;}
 .status-concluida { background:#d4edda; color:#155724; padding:3px 8px; border-radius:10px; font-size:0.8rem;}
 .status-outro { background:#f8d7da; color:#721c24; padding:3px 8px; border-radius:10px; font-size:0.8rem;}
+
+/* ✅ NOVO: Destaque para produções com discente autor */
+.destaque-discente { background-color: #e8f5e9 !important; border: 1px solid #a5d6a7; 
+                     padding: 12px; border-radius: 8px; margin-bottom: 12px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -386,7 +387,7 @@ def get_nome_autor_principal(username):
     return user_data["name"] if user_data else username
 
 # ---------------------------------------------------------
-# 🆕 CRUD DE ORIENTAÇÕES (SIMPLIFICADO)
+# CRUD DE ORIENTAÇÕES
 # ---------------------------------------------------------
 def orientacao_submit(docente_username, discente_nome, tipo, ano_inicio, ano_conclusao, status):
     orient_id = str(uuid.uuid4())
@@ -412,7 +413,7 @@ def orientacao_delete(orient_id):
         return False, f"Erro ao excluir: {e}"
 
 # ---------------------------------------------------------
-# 🆕 CRUD DE ATIVIDADES DE ENSINO
+# CRUD DE ATIVIDADES DE ENSINO
 # ---------------------------------------------------------
 def ensino_submit(docente_username, tipo, titulo, periodo, ano, 
                   carga_horaria, nivel, descricao=""):
@@ -439,7 +440,7 @@ def ensino_delete(ensino_id):
         return False, f"Erro ao excluir: {e}"
 
 # ---------------------------------------------------------
-# 🆕 CRUD DE ATIVIDADES DE IMPACTO
+# CRUD DE ATIVIDADES DE IMPACTO
 # ---------------------------------------------------------
 def impacto_submit(docente_username, tipo, titulo, descricao, data, 
                    publico_alvo, local):
@@ -680,7 +681,7 @@ def renderizar_checkboxes_autoria(prefixo, discente_primeiro_default=False, doce
     col_check1, col_check2 = st.columns(2)
     with col_check1:
         discente_primeiro = st.checkbox(
-            "🎓 Discente do PPG é o primeiro/último autor",
+            " Discente do PPG é o primeiro/último autor",
             value=discente_primeiro_default,
             key=f"{prefixo}_discente_primeiro",
             help="Marque se o primeiro/último nome na lista de autores é um discente do PPG"
@@ -702,11 +703,11 @@ def renderizar_checkboxes_autoria(prefixo, discente_primeiro_default=False, doce
 def badge_status(status):
     status_lower = str(status).strip().lower()
     if status_lower in ["em andamento"]:
-        return f'<span class="status-andamento">⏳ {status}</span>'
+        return f'<span class="status-andamento"> {status}</span>'
     elif status_lower in ["concluída", "concluida"]:
         return f'<span class="status-concluida">✅ {status}</span>'
     else:
-        return f'<span class="status-outro">⚠️ {status}</span>'
+        return f'<span class="status-outro">️ {status}</span>'
 
 # ---------------------------------------------------------
 # SESSION
@@ -727,7 +728,7 @@ with st.sidebar:
         
         if st.button("🌐 Página Pública", use_container_width=True, key="btn_public_sidebar"):
             st.session_state.page = "public"; st.rerun()
-        if st.button("🔒 Área Restrita", use_container_width=True, key="btn_private_sidebar"):
+        if st.button(" Área Restrita", use_container_width=True, key="btn_private_sidebar"):
             st.session_state.page = "private"; st.rerun()
         
         st.divider()
@@ -739,7 +740,7 @@ with st.sidebar:
     else:
         st.info("🔓 Área Pública")
         st.caption("Visualize as produções e estatísticas")
-        if st.button("🔑 Login", use_container_width=True, key="btn_login_sidebar"):
+        if st.button(" Login", use_container_width=True, key="btn_login_sidebar"):
             st.session_state.page = "login"; st.rerun()
 
 # =========================================================
@@ -748,7 +749,7 @@ with st.sidebar:
 if st.session_state.page == "public":
     st.markdown("""
     <div class="public-notice">
-    <h3>📊 Portal Público de Produção Científica</h3>
+    <h3> Portal Público de Produção Científica</h3>
     <p>Acompanhe as produções científicas do PPG, o envolvimento dos discentes e a diversidade da pesquisa.</p>
     </div>
     """, unsafe_allow_html=True)
@@ -797,7 +798,7 @@ if st.session_state.page == "public":
             st.markdown(f"""
             <div class="metric-card-pink">
                 <div class="metric-value">{stats['total_orientacoes']}</div>
-                <div class="metric-label">🎓 Orientações</div>
+                <div class="metric-label"> Orientações</div>
             </div>""", unsafe_allow_html=True)
         with c2:
             st.markdown(f"""
@@ -824,7 +825,7 @@ if st.session_state.page == "public":
             </div>""", unsafe_allow_html=True)
         with col2:
             if stats['top_periodicos']:
-                st.markdown("#### 🏆 Top 10 Periódicos Mais Frequentes")
+                st.markdown("####  Top 10 Periódicos Mais Frequentes")
                 df_top = pd.DataFrame({
                     'Periódico': list(stats['top_periodicos'].keys()),
                     'Publicações': list(stats['top_periodicos'].values())
@@ -877,7 +878,7 @@ if st.session_state.page == "public":
                 <div class="metric-value">{stats['artigos_com_discente_primeiro']}</div>
                 <div class="metric-label">🎓 Artigos com Discente do PPG<br>como <strong>Primeiro/Último Autor</strong></div>
             </div>""", unsafe_allow_html=True)
-            st.info("💡 Indica destaque discente")
+            st.info(" Indica destaque discente")
         with col2:
             st.markdown(f"""
             <div class="metric-card-green">
@@ -888,7 +889,7 @@ if st.session_state.page == "public":
         
         st.divider()
         
-        st.subheader("📅 Evolução Temporal")
+        st.subheader(" Evolução Temporal")
         st.markdown("#### Total de Produções por Ano")
         df_total_ano = pd.DataFrame({
             'Ano': list(stats['producoes_por_ano'].keys()),
@@ -935,13 +936,19 @@ if st.session_state.page == "public":
                 if not subset.empty:
                     st.markdown(f"### 📅 {ano}")
                     for _, row in subset.iterrows():
+                        # ✅ Verifica se tem discente como autor de destaque
+                        discente_primeiro = str(row.get("discente_primeiro_autor", "")).strip().lower()
+                        tem_destaque = discente_primeiro == "sim"
+                        
+                        if tem_destaque:
+                            st.markdown('<div class="destaque-discente">', unsafe_allow_html=True)
+                        
                         with st.expander(f"**{row['titulo']}** — {row['tipo']}"):
                             autor_principal_nome = get_nome_autor_principal(row["docente_username"])
                             st.markdown(f'<span class="main-author-tag">👤 Autor Principal: {autor_principal_nome}</span>', 
                                        unsafe_allow_html=True)
                             
                             badges = []
-                            discente_primeiro = str(row.get("discente_primeiro_autor", "")).strip().lower()
                             docente_ultimo = str(row.get("docente_ultimo_autor", "")).strip().lower()
                             if discente_primeiro == "sim":
                                 badges.append('<span class="badge-discente-1">🎓 Discente é 1º autor</span>')
@@ -955,7 +962,7 @@ if st.session_state.page == "public":
                             st.write(f"**DOI:** {row['doi'] or '—'}")
                             descricao_text = str(row.get('descricao', '')).strip()
                             if descricao_text:
-                                st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{descricao_text}</div>', 
+                                st.markdown(f'<div class="descricao-box"><b> Descrição:</b><br>{descricao_text}</div>', 
                                            unsafe_allow_html=True)
                             parts = df_part[df_part["producao_id"] == row["id"]] if not df_part.empty else pd.DataFrame()
                             if not parts.empty:
@@ -967,6 +974,9 @@ if st.session_state.page == "public":
                                     st.info("🌍 Conta com participação de pesquisador(es) estrangeiro(s)")
                             else:
                                 st.info("Nenhuma participação registrada.")
+                        
+                        if tem_destaque:
+                            st.markdown('</div>', unsafe_allow_html=True)
             
             if df_filtrado.empty:
                 st.info("Nenhuma produção encontrada com os filtros selecionados.")
@@ -994,6 +1004,9 @@ if st.session_state.page == "public":
             if filtro_status_ori:
                 df_ori_filt = df_ori_filt[df_ori_filt["status"].isin(filtro_status_ori)]
             
+            # ✅ Ordenar alfabeticamente pelo nome do orientando
+            df_ori_filt = df_ori_filt.sort_values(by="discente_nome", key=lambda x: x.str.lower())
+            
             st.write(f"**Total:** {len(df_ori_filt)} orientações encontradas")
             
             for _, row in df_ori_filt.iterrows():
@@ -1007,9 +1020,9 @@ if st.session_state.page == "public":
                     st.write(f"**Ano de entrada:** {row['ano_inicio']}")
                     st.write(f"**Ano de saída:** {row['ano_conclusao'] or '—'}")
     
-    # 🆕 ABA DE ENSINO PÚBLICA
+    #  ABA DE ENSINO PÚBLICA
     with tab_ensino_pub:
-        st.subheader("📖 Atividades de Ensino")
+        st.subheader(" Atividades de Ensino")
         df_ensino = read_df(SHEET_ENSINO)
         df_users = read_df(SHEET_USERS)
         
@@ -1087,7 +1100,7 @@ if st.session_state.page == "public":
 # =========================================================
 elif st.session_state.page == "login":
     st.subheader("🔐 Acesso Restrito")
-    tab_login, tab_cad = st.tabs(["🔑 Login", "📝 Cadastro"])
+    tab_login, tab_cad = st.tabs([" Login", "📝 Cadastro"])
     
     with tab_login:
         st.markdown("<div class='block-card'>", unsafe_allow_html=True)
@@ -1144,7 +1157,7 @@ elif st.session_state.page == "private":
     # PAINEL ADMIN (COORDENADOR)
     # =========================================================
     if user_role == "admin":
-        st.subheader("🛠️ Painel do Coordenador")
+        st.subheader("️ Painel do Coordenador")
         df_users = read_df(SHEET_USERS)
         df_cad = read_df(SHEET_CAD)
         df_prod = read_df(SHEET_PROD)
@@ -1199,7 +1212,7 @@ elif st.session_state.page == "private":
             if df_prod.empty: st.info("Sem produções.")
             else:
                 for ano in ANOS:
-                    st.markdown(f"### 📅 {ano}")
+                    st.markdown(f"###  {ano}")
                     subset = df_prod[df_prod["ano"].astype(str).str.strip() == ano]
                     if subset.empty: st.write("— Nenhuma produção registrada —")
                     else:
@@ -1236,7 +1249,7 @@ elif st.session_state.page == "private":
                         doi = st.text_input("DOI (opcional)", key="admin_prod_doi")
                     descricao = st.text_area("📝 Descrição qualitativa (opcional)",
                         placeholder="Descreva o contexto, relevância, impacto...", height=100, key="admin_prod_descricao")
-                    st.markdown("**👥 Co-autores do PPG (opcional)**")
+                    st.markdown("** Co-autores do PPG (opcional)**")
                     docentes_list = listar_docentes()
                     docentes_list = [d for d in docentes_list if d != selected_label.split(" (")[0]]
                     co_autores_selecionados = st.multiselect(
@@ -1293,7 +1306,7 @@ elif st.session_state.page == "private":
                             st.rerun()
                 
                 st.divider()
-                st.markdown("### 📋 Orientações cadastradas")
+                st.markdown("###  Orientações cadastradas")
                 if df_orient.empty:
                     st.info("Nenhuma orientação cadastrada.")
                 else:
@@ -1301,6 +1314,9 @@ elif st.session_state.page == "private":
                     if ori_docente.empty:
                         st.info(f"Sem orientações para {selected_label.split(' (')[0]}.")
                     else:
+                        # ✅ Ordenar alfabeticamente pelo nome do orientando
+                        ori_docente = ori_docente.sort_values(by="discente_nome", key=lambda x: x.str.lower())
+                        
                         for _, row in ori_docente.iterrows():
                             ano_conc_display = str(row.get('ano_conclusao', '')).strip() if str(row.get('ano_conclusao', '')).strip() else "em andamento"
                             with st.expander(f"**{row['discente_nome']}** — {row['tipo']} ({row['ano_inicio']} → {ano_conc_display})"):
@@ -1349,7 +1365,7 @@ elif st.session_state.page == "private":
                             st.rerun()
                 
                 st.divider()
-                st.markdown("### 📋 Atividades cadastradas")
+                st.markdown("###  Atividades cadastradas")
                 if df_ensino.empty:
                     st.info("Nenhuma atividade cadastrada.")
                 else:
@@ -1368,7 +1384,7 @@ elif st.session_state.page == "private":
                                         st.write(f"**Carga horária:** {row['carga_horaria'] or '—'} h")
                                         desc = str(row.get('descricao', '')).strip()
                                         if desc:
-                                            st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{desc}</div>', 
+                                            st.markdown(f'<div class="descricao-box"><b> Descrição:</b><br>{desc}</div>', 
                                                        unsafe_allow_html=True)
                                         if st.button("🗑️ Excluir", key=f"del_ens_{row['id']}", use_container_width=True):
                                             ok, msg = ensino_delete(row['id'])
@@ -1377,7 +1393,7 @@ elif st.session_state.page == "private":
         
         # 🆕 TAB IMPACTO
         with t9:
-            st.subheader("🌍 Atividades de Impacto na Sociedade")
+            st.subheader(" Atividades de Impacto na Sociedade")
             docentes_df = df_users[df_users["role"].str.lower().isin(["docente", "professor"])] if not df_users.empty else pd.DataFrame()
             
             if docentes_df.empty:
@@ -1439,7 +1455,7 @@ elif st.session_state.page == "private":
     # PAINEL DOCENTE
     # =========================================================
     elif user_role == "docente":
-        st.subheader(f"📚 Minhas produções — {user.get('name','')}")
+        st.subheader(f" Minhas produções — {user.get('name','')}")
         df_prod = read_df(SHEET_PROD)
         df_part = read_df(SHEET_PART)
         todas_producoes = get_minhas_producoes(user_username)
@@ -1451,9 +1467,17 @@ elif st.session_state.page == "private":
             for ano in ANOS:
                 subset = todas_producoes[todas_producoes["ano"].astype(str).str.strip() == ano]
                 if not subset.empty:
-                    st.markdown(f"#### 📅 {ano}")
+                    st.markdown(f"####  {ano}")
                     for _, row in subset.iterrows():
                         eh_principal = row.get("tipo_autoria", "") == "principal"
+                        
+                        # ✅ Verifica se tem discente como autor de destaque
+                        discente_primeiro = str(row.get("discente_primeiro_autor", "")).strip().lower()
+                        tem_destaque = discente_primeiro == "sim"
+                        
+                        if tem_destaque:
+                            st.markdown('<div class="destaque-discente">', unsafe_allow_html=True)
+                        
                         with st.expander(f"**{row['titulo']}** — {row['tipo']}"):
                             autor_principal_nome = get_nome_autor_principal(row["docente_username"])
                             st.markdown(f'<span class="main-author-tag">👤 Autor Principal: {autor_principal_nome}</span>', 
@@ -1466,7 +1490,6 @@ elif st.session_state.page == "private":
                                            unsafe_allow_html=True)
                             
                             badges = []
-                            discente_primeiro = str(row.get("discente_primeiro_autor", "")).strip().lower()
                             docente_ultimo = str(row.get("docente_ultimo_autor", "")).strip().lower()
                             if discente_primeiro == "sim":
                                 badges.append('<span class="badge-discente-1">🎓 Discente é 1º autor</span>')
@@ -1496,6 +1519,9 @@ elif st.session_state.page == "private":
                                         st.session_state['deleting_prod_id'] = row['id']; st.rerun()
                             else:
                                 st.info("💡 Co-autores podem visualizar, mas não editar/excluir esta produção.")
+                        
+                        if tem_destaque:
+                            st.markdown('</div>', unsafe_allow_html=True)
         
         st.divider()
         
@@ -1564,7 +1590,7 @@ elif st.session_state.page == "private":
             prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
             prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
             if prod_data is not None:
-                st.markdown("### ✏️ Editar produção")
+                st.markdown("### ️ Editar produção")
                 with st.form(f"form_edit_{pid}"):
                     c1, c2 = st.columns(2)
                     with c1:
