@@ -953,26 +953,7 @@ if st.session_state.page == "public":
                 <div class="metric-label">Participação Discente</div>
             </div>""", unsafe_allow_html=True)
         
-        st.divider()
-        
-        st.subheader("☁️ Nuvem de Palavras dos Títulos")
-        st.markdown("""
-        <div class="highlight-box">
-        <p><strong>📌 O que é isto?</strong> Visualização das palavras mais frequentes nos títulos das produções 
-        científicas do PPG. Palavras maiores aparecem com mais frequência.</p>
-        </div>""", unsafe_allow_html=True)
-        
-        df_prod_cloud = read_df(SHEET_PROD)
-        texto_titulos = extrair_texto_titulos(df_prod_cloud)
-        
-        if texto_titulos:
-            fig_wordcloud = gerar_wordcloud(texto_titulos, max_words=100)
-            if fig_wordcloud:
-                st.pyplot(fig_wordcloud)
-        else:
-            st.info("Ainda não há títulos cadastrados para gerar a nuvem de palavras.")
-        
-        st.divider()
+        st.divider()       
         
         st.subheader("🎓 Atividades Acadêmicas Complementares")
         
@@ -1091,7 +1072,26 @@ if st.session_state.page == "public":
             'Orientações iniciadas': [stats['orient_por_ano'].get(ano, 0) for ano in ANOS],
         })
         st.dataframe(df_resumo, use_container_width=True)
-    
+        st.divider()
+
+        st.subheader("☁️ Nuvem de Palavras dos Títulos")
+        st.markdown("""
+        <div class="highlight-box">
+        <p><strong>📌 O que é isto?</strong> Visualização das palavras mais frequentes nos títulos das produções 
+        científicas do PPG. Palavras maiores aparecem com mais frequência.</p>
+        </div>""", unsafe_allow_html=True)
+        
+        df_prod_cloud = read_df(SHEET_PROD)
+        texto_titulos = extrair_texto_titulos(df_prod_cloud)
+        
+        if texto_titulos:
+            fig_wordcloud = gerar_wordcloud(texto_titulos, max_words=100)
+            if fig_wordcloud:
+                st.pyplot(fig_wordcloud)
+        else:
+            st.info("Ainda não há títulos cadastrados para gerar a nuvem de palavras.")
+        
+        st.divider()
     with tab_producoes:
         st.subheader("📚 Produções Científicas")
         df_prod = read_df(SHEET_PROD)
