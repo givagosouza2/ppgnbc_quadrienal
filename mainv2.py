@@ -223,36 +223,43 @@ st.markdown("""
 # ---------------------------------------------------------
 def exibir_video_entrada():
     """
-    Exibe o vídeo de entrada na página pública com largura controlada e centralizado.
+    Exibe o vídeo com autoplay e loop contínuo.
     """
     video_file = Path("videoEntrada.mp4")
     onedrive_url = "https://1drv.ms/v/c/58f7c307dd0b40d5/IQA3PnOTq7oOSaSa-iZ9QFrpAWog0XjOwi8u-qlM0lf5IuE?e=rOp0G2"
     
-    # ✅ Centraliza o vídeo usando colunas (1 parte | 4 partes | 1 parte)
-    col_esq, col_video, col_dir = st.columns([1, 8, 1])
+    col_esq, col_video, col_dir = st.columns([1, 4, 1])
     
-    with col_video:      
+    with col_video:
+        st.markdown("### 🎬 Conheça o PPG")
+        
         if video_file.exists():
             try:
                 video_bytes = video_file.read_bytes()
                 b64_video = base64.b64encode(video_bytes).decode()
+                
                 video_html = f"""
-                <video controls autoplay muted loop playsinline>
+                <video autoplay loop muted playsinline controls
+                       style="width: 100%; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
                     <source src="data:video/mp4;base64,{b64_video}" type="video/mp4">
                     Seu navegador não suporta o elemento de vídeo.
                 </video>
                 """
-                st.video(str(video_file))
-                #st.markdown(video_html, unsafe_allow_html=True)
+                components.html(video_html, height=450, scrolling=False)
             except Exception as e:
-                st.warning(f"Erro ao carregar vídeo local: {e}")
-                st.markdown(f'<iframe src="{onedrive_url}" frameborder="0" allowfullscreen></iframe>', 
-                           unsafe_allow_html=True)
+                st.warning(f"Erro ao carregar vídeo: {e}")
+                st.video(str(video_file), autoplay=True)
         else:
-            st.markdown(f'<iframe src="{onedrive_url}" frameborder="0" allowfullscreen></iframe>', 
-                       unsafe_allow_html=True)
-        
-        st.markdown("</div></div>", unsafe_allow_html=True)
+            iframe_html = f"""
+            <iframe src="{onedrive_url}" 
+                    width="100%" 
+                    height="450" 
+                    frameborder="0" 
+                    allowfullscreen
+                    style="border-radius: 12px; border: none;">
+            </iframe>
+            """
+            components.html(iframe_html, height=450, scrolling=False)
 
 # ---------------------------------------------------------
 # E-MAIL & PASSWORD HASH
