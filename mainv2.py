@@ -227,11 +227,11 @@ def exibir_video_entrada():
     video_file = Path("videoEntrada.mp4")
     onedrive_url = "https://1drv.ms/v/c/58f7c307dd0b40d5/IQA3PnOTq7oOSaSa-iZ9QFrpAWog0XjOwi8u-qlM0lf5IuE?e=rOp0G2"
     
-    st.markdown("""
-    <div class="video-container">
-        <div class="video-title">🎬 Conheça o PPG</div>
-        <div class="video-wrapper">
-    """, unsafe_allow_html=True)
+    #st.markdown("""
+    #<div class="video-container">
+    #    <div class="video-title">🎬 Conheça o PPG</div>
+    #    <div class="video-wrapper">
+    #""", unsafe_allow_html=True)
     
     if video_file.exists():
         try:
