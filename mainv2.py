@@ -1,4 +1,4 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v6.7 - Vídeo de Entrada)
+# app.py — Sistema de Monitoramento de Produção do PPG (v6.8 - WordCloud)
 # Streamlit + Google Sheets + E-mails
 # =========================================================
 
@@ -14,6 +14,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 from gspread.exceptions import APIError, WorksheetNotFound, SpreadsheetNotFound
 from PIL import Image
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
 
 # ---------------------------------------------------------
 # CONFIG
@@ -179,27 +181,6 @@ st.markdown("""
 .status-concluida { background:#d4edda; color:#155724; padding:3px 8px; border-radius:10px; font-size:0.8rem;}
 .status-outro { background:#f8d7da; color:#721c24; padding:3px 8px; border-radius:10px; font-size:0.8rem;}
 
-/* 🌥️ Nuvem de palavras */
-.wordcloud-container {
-    background: linear-gradient(135deg, #fafafa 0%, #f0f4f8 100%);
-    border: 1px solid #e0e6ed;
-    border-radius: 12px;
-    padding: 24px;
-    text-align: center;
-    line-height: 2.2;
-    word-spacing: 4px;
-}
-.wordcloud-word {
-    display: inline-block;
-    margin: 4px 8px;
-    font-weight: 600;
-    transition: transform 0.2s ease;
-    cursor: default;
-}
-.wordcloud-word:hover {
-    transform: scale(1.15);
-}
-
 /* 🎬 Vídeo de entrada */
 .video-container {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -210,7 +191,7 @@ st.markdown("""
 }
 .video-wrapper {
     position: relative;
-    padding-bottom: 56.25%; /* 16:9 aspect ratio */
+    padding-bottom: 56.25%;
     height: 0;
     overflow: hidden;
     border-radius: 12px;
@@ -252,7 +233,6 @@ def exibir_video_entrada():
         <div class="video-wrapper">
     """, unsafe_allow_html=True)
     
-    # Tenta carregar vídeo local primeiro
     if video_file.exists():
         try:
             video_bytes = video_file.read_bytes()
@@ -266,11 +246,9 @@ def exibir_video_entrada():
             st.markdown(video_html, unsafe_allow_html=True)
         except Exception as e:
             st.warning(f"Erro ao carregar vídeo local: {e}")
-            # Fallback para iframe do OneDrive
             st.markdown(f'<iframe src="{onedrive_url}" frameborder="0" allowfullscreen></iframe>', 
                        unsafe_allow_html=True)
     else:
-        # Fallback para iframe do OneDrive
         st.markdown(f'<iframe src="{onedrive_url}" frameborder="0" allowfullscreen></iframe>', 
                    unsafe_allow_html=True)
     
@@ -464,76 +442,52 @@ def get_docente_username_by_name(nome):
     return None
 
 # ---------------------------------------------------------
-# 🌥️ NUVEM DE PALAVRAS
+# ☁️ NUVEM DE PALAVRAS (WordCloud)
 # ---------------------------------------------------------
-def extrair_palavras_titulos(df_prod, top_n=60, min_freq=1, min_len=3):
+def extrair_texto_titulos(df_prod):
     """
-    Extrai as palavras mais frequentes dos títulos das produções.
-    Retorna lista de (palavra, frequência) ordenada por frequência.
+    Extrai e processa texto dos títulos para WordCloud.
+    Retorna string com todas as palavras filtradas.
     """
     if df_prod.empty or "titulo" not in df_prod.columns:
-        return []
+        return ""
     
     todas_palavras = []
     for titulo in df_prod["titulo"].dropna():
-        # Normalizar: lowercase, remover pontuação
         texto = str(titulo).lower()
-        # Remover pontuação e caracteres especiais
         texto = re.sub(r'[^\w\s]', ' ', texto)
-        # Tokenizar
         palavras = texto.split()
-        # Filtrar
         for p in palavras:
             p = p.strip()
-            if len(p) >= min_len and p not in STOPWORDS and not p.isdigit():
+            if len(p) >= 3 and p not in STOPWORDS and not p.isdigit():
                 todas_palavras.append(p)
     
-    if not todas_palavras:
-        return []
-    
-    contagem = Counter(todas_palavras)
-    # Filtrar por frequência mínima
-    palavras_filtradas = [(palavra, freq) for palavra, freq in contagem.items() if freq >= min_freq]
-    # Ordenar por frequência (decrescente)
-    palavras_filtradas.sort(key=lambda x: x[1], reverse=True)
-    
-    return palavras_filtradas[:top_n]
+    return " ".join(todas_palavras)
 
-def gerar_html_nuvem_palavras(palavras_frequencia, max_font_size=42, min_font_size=12):
+def gerar_wordcloud(texto, max_words=100):
     """
-    Gera HTML estilizado para nuvem de palavras.
+    Gera WordCloud a partir do texto.
+    Retorna figura matplotlib.
     """
-    if not palavras_frequencia:
-        return '<p style="text-align:center; color:#999;">Nenhuma palavra encontrada nos títulos.</p>'
+    if not texto:
+        return None
     
-    max_freq = max(freq for _, freq in palavras_frequencia)
-    min_freq = min(freq for _, freq in palavras_frequencia)
+    wordcloud = WordCloud(
+        width=1200,
+        height=600,
+        background_color='white',
+        max_words=max_words,
+        colormap='viridis',
+        relative_scaling=0.5,
+        random_state=42
+    ).generate(texto)
     
-    # Paleta de cores (tons acadêmicos)
-    cores = [
-        "#1976d2", "#388e3c", "#d32f2f", "#7b1fa2", "#f57c00",
-        "#00796b", "#5d4037", "#c2185b", "#0288d1", "#689f38",
-        "#e64a19", "#512da8", "#0097a7", "#455a64", "#ad1457",
-    ]
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.imshow(wordcloud, interpolation='bilinear')
+    ax.axis('off')
+    plt.tight_layout(pad=0)
     
-    html_parts = []
-    for idx, (palavra, freq) in enumerate(palavras_frequencia):
-        # Calcular tamanho de fonte proporcional
-        if max_freq == min_freq:
-            tamanho = max_font_size
-        else:
-            ratio = (freq - min_freq) / (max_freq - min_freq)
-            tamanho = int(min_font_size + ratio * (max_font_size - min_font_size))
-        
-        # Cor alternada
-        cor = cores[idx % len(cores)]
-        
-        html_parts.append(
-            f'<span class="wordcloud-word" style="font-size:{tamanho}px; color:{cor};" '
-            f'title="Aparece {freq}x nos títulos">{palavra}</span>'
-        )
-    
-    return '<div class="wordcloud-container">' + " ".join(html_parts) + '</div>'
+    return fig
 
 # ---------------------------------------------------------
 # FUNÇÕES DE CO-AUTORIA
@@ -963,7 +917,6 @@ if st.session_state.page == "public":
     </div>
     """, unsafe_allow_html=True)
     
-    # 🎬 EXIBIR VÍDEO DE ENTRADA
     exibir_video_entrada()
     
     tab_dashboard, tab_producoes, tab_orient_pub, tab_ensino_pub, tab_impacto_pub = st.tabs([
@@ -1004,32 +957,32 @@ if st.session_state.page == "public":
         
         st.divider()
         
-        # 🌥️ NUVEM DE PALAVRAS
+        # ☁️ NUVEM DE PALAVRAS COM WORDCLOUD
         st.subheader("☁️ Nuvem de Palavras dos Títulos")
         st.markdown("""
         <div class="highlight-box">
         <p><strong>📌 O que é isto?</strong> Visualização das palavras mais frequentes nos títulos das produções 
-        científicas do PPG. Palavras maiores aparecem com mais frequência. Passe o mouse sobre cada palavra 
-        para ver quantas vezes ela aparece.</p>
+        científicas do PPG. Palavras maiores aparecem com mais frequência.</p>
         </div>""", unsafe_allow_html=True)
         
         df_prod_cloud = read_df(SHEET_PROD)
-        palavras_freq = extrair_palavras_titulos(df_prod_cloud, top_n=80, min_freq=1, min_len=3)
+        texto_titulos = extrair_texto_titulos(df_prod_cloud)
         
-        if palavras_freq:
-            html_nuvem = gerar_html_nuvem_palavras(palavras_freq, max_font_size=48, min_font_size=14)
-            st.markdown(html_nuvem, unsafe_allow_html=True)
-            
-            # Legenda com top 10
-            st.markdown("#### 🔟 Top 10 palavras mais frequentes")
-            top10 = palavras_freq[:10]
-            col_a, col_b = st.columns(2)
-            with col_a:
-                for i, (pal, freq) in enumerate(top10[:5], 1):
-                    st.markdown(f"**{i}.** `{pal}` — {freq}x")
-            with col_b:
-                for i, (pal, freq) in enumerate(top10[5:], 6):
-                    st.markdown(f"**{i}.** `{pal}` — {freq}x")
+        if texto_titulos:
+            fig_wordcloud = gerar_wordcloud(texto_titulos, max_words=100)
+            if fig_wordcloud:
+                st.pyplot(fig_wordcloud)
+                
+                # Top 10 palavras
+                st.markdown("#### 🔟 Top 10 palavras mais frequentes")
+                palavras_freq = Counter(texto_titulos.split()).most_common(10)
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    for i, (pal, freq) in enumerate(palavras_freq[:5], 1):
+                        st.markdown(f"**{i}.** `{pal}` — {freq}x")
+                with col_b:
+                    for i, (pal, freq) in enumerate(palavras_freq[5:], 6):
+                        st.markdown(f"**{i}.** `{pal}` — {freq}x")
         else:
             st.info("Ainda não há títulos cadastrados para gerar a nuvem de palavras.")
         
@@ -1727,7 +1680,7 @@ elif st.session_state.page == "private":
                             if discente_primeiro == "sim":
                                 badges.append('<span class="badge-discente-1">🎓 Discente é 1º autor</span>')
                             if docente_ultimo == "sim":
-                                badges.append('<span class="badge-docente-last">👨‍ Docente é último autor</span>')
+                                badges.append('<span class="badge-docente-last">👨‍🏫 Docente é último autor</span>')
                             if badges:
                                 st.markdown(" ".join(badges), unsafe_allow_html=True)
                             
