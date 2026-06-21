@@ -1694,64 +1694,7 @@ elif st.session_state.page == "private":
         
         st.divider()
         
-        st.subheader("➕ Cadastrar nova produção")
-        with st.form("form_prod"):
-            c1, c2 = st.columns(2)
-            with c1:
-                titulo = st.text_input("Título", key="prod_titulo")
-                tipo = st.selectbox("Tipo", TIPOS_PRODUCAO, key="prod_tipo")
-                ano = st.selectbox("Ano", ANOS, key="prod_ano")
-            with c2:
-                veiculo = st.text_input("Veículo/Periódico", key="prod_veiculo")
-                autores = st.text_input("Autores (separados por vírgula, na ordem)", key="prod_autores")
-                doi = st.text_input("DOI (opcional)", key="prod_doi")
-            descricao = st.text_area("📝 Descrição qualitativa (opcional)",
-                placeholder="Descreva o contexto, relevância, impacto...", height=100, key="prod_descricao")
-            st.markdown("**👥 Co-autores do PPG (opcional)**")
-            docentes_list = listar_docentes()
-            docentes_list = [d for d in docentes_list if d != user.get('name', '')]
-            co_autores_selecionados = st.multiselect(
-                "Selecione outros docentes do PPG que são co-autores:",
-                docentes_list, key="prod_coautores")
-            co_autores_usernames = ",".join([
-                get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
-            
-            discente_primeiro_str, docente_ultimo_str = renderizar_checkboxes_autoria("docente_cad")
-            
-            submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
-            if submitted:
-                if not titulo.strip():
-                    st.error("Título é obrigatório.")
-                else:
-                    if doi or titulo:
-                        duplicata = verificar_duplicacao(doi, titulo)
-                        if duplicata is not None:
-                            autor_principal = users_get(duplicata["docente_username"])
-                            autor_nome = autor_principal["name"] if autor_principal else duplicata["docente_username"]
-                            st.error(f"""
-                            ⚠️ **Produção já cadastrada!**
-                            **DOI:** {duplicata.get('doi', 'N/A')}  
-                            **Cadastrada por:** {autor_nome}  
-                            **Data:** {duplicata.get('created_at', 'N/A')}
-                            Deseja se adicionar como co-autor ao invés de criar nova?
-                            """)
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                if st.button("✅ Sim, adicionar como co-autor", key="btn_coautor_submit"):
-                                    ok, msg = adicionar_co_autor(duplicata["id"], user_username)
-                                    if ok: st.success(msg); st.balloons(); time.sleep(2); st.rerun()
-                                    else: st.error(msg)
-                            with col2:
-                                if st.button("❌ Não, cadastrar como nova", key="btn_forcar_nova"):
-                                    producao_submit(user_username, titulo, tipo, ano, veiculo, 
-                                                   autores, doi, descricao, co_autores_usernames,
-                                                   discente_primeiro_str, docente_ultimo_str)
-                                    st.success("Produção cadastrada!"); st.rerun()
-                        else:
-                            producao_submit(user_username, titulo, tipo, ano, veiculo, 
-                                           autores, doi, descricao, co_autores_usernames,
-                                           discente_primeiro_str, docente_ultimo_str)
-                            st.success("Produção cadastrada com sucesso!"); st.rerun()
+        
         
         if 'editing_prod_id' in st.session_state:
             pid = st.session_state['editing_prod_id']
