@@ -34,7 +34,7 @@ try:
 except Exception:
     pass
 
-st.title("🎓 Sistema de Monitoramento de Produção do PPG")
+st.title("🦠Sistema de Gerenciamento da Produção do PPG em Neurociências e Biologia Celular da UFPA 🧠")
 
 SPREADSHEET_ID = st.secrets.get("GSHEET_SPREADSHEET_ID", "")
 if not SPREADSHEET_ID:
