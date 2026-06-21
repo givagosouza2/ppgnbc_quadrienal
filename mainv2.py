@@ -1,10 +1,12 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v6.5 - Correções Finais)
+# app.py — Sistema de Monitoramento de Produção do PPG (v6.7 - Vídeo de Entrada)
 # Streamlit + Google Sheets + E-mails
 # =========================================================
 
 import os, time, base64, uuid, hashlib, hmac, smtplib, re
 from email.message import EmailMessage
 from datetime import datetime
+from collections import Counter
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -29,7 +31,7 @@ try:
 except Exception:
     pass
 
-st.title(" Sistema de Monitoramento de Produção do PPG")
+st.title("🎓 Sistema de Monitoramento de Produção do PPG")
 
 SPREADSHEET_ID = st.secrets.get("GSHEET_SPREADSHEET_ID", "")
 if not SPREADSHEET_ID:
@@ -96,6 +98,50 @@ TIPOS_IMPACTO = [
 ]
 
 # ---------------------------------------------------------
+# STOPWORDS (Português)
+# ---------------------------------------------------------
+STOPWORDS = {
+    "de", "a", "o", "que", "e", "do", "da", "em", "um", "para", "com", "no",
+    "uma", "os", "por", "mais", "as", "dos", "como", "mas", "foi", "ao", "ele",
+    "das", "tem", "à", "seu", "sua", "ou", "ser", "quando", "muito", "há",
+    "nos", "já", "está", "eu", "também", "só", "pelo", "pela", "até", "isso",
+    "ela", "entre", "era", "depois", "sem", "mesmo", "aos", "ter", "seus",
+    "quem", "nas", "me", "esse", "eles", "estão", "você", "tinha", "foram",
+    "essa", "num", "nem", "suas", "meu", "às", "minha", "têm", "numa", "pelos",
+    "elas", "havia", "seja", "qual", "será", "nós", "tenho", "lhe", "deles",
+    "essas", "esses", "pelas", "este", "fosse", "dele", "tu", "te", "vocês",
+    "vos", "lhes", "meus", "minhas", "teu", "tua", "teus", "tuas", "nosso",
+    "nossa", "nossos", "nossas", "dela", "delas", "esta", "estes", "estas",
+    "aquele", "aquela", "aqueles", "aquelas", "isto", "aquilo", "estou",
+    "estamos", "estive", "esteve", "estivemos", "estiveram", "estava",
+    "estávamos", "estavam", "estivera", "estivéramos", "estejamos", "estejam",
+    "estivesse", "estivéssemos", "estivessem", "estiver", "estivermos",
+    "estiverem", "hei", "havemos", "hão", "houve", "houvemos", "houveram",
+    "houvera", "houvéramos", "haja", "hajamos", "hajam", "houvesse",
+    "houvéssemos", "houvessem", "houver", "houvermos", "houverem", "houverei",
+    "houverá", "houveremos", "houverão", "houveria", "houveríamos", "houveriam",
+    "sou", "somos", "são", "éramos", "eram", "fui", "fomos", "fora", "fôramos",
+    "sejamos", "fôssemos", "formos", "forem", "serei", "seremos", "serão",
+    "seria", "seríamos", "seriam", "temos", "tém", "tínhamos", "tinham",
+    "tive", "teve", "tivemos", "tiveram", "tivera", "tivéramos", "tenha",
+    "tenhamos", "tenham", "tivesse", "tivéssemos", "tivessem", "tiver",
+    "tivermos", "tiverem", "terei", "terá", "teremos", "terão", "teria",
+    "teríamos", "teriam", "sobre", "sob", "após", "apois", "através", "segundo",
+    "conforme", "mediante", "perante", "ante", "contra", "versus", "vs",
+    "the", "and", "of", "to", "in", "for", "is", "on", "that", "by", "this",
+    "with", "from", "are", "be", "an", "it", "at", "or", "as", "was", "have",
+    "has", "had", "not", "but", "all", "can", "her", "were", "there", "their",
+    "which", "one", "would", "will", "each", "about", "how", "up", "out",
+    "many", "then", "them", "these", "so", "some", "other", "than", "into",
+    "its", "your", "also", "new", "may", "day", "just", "after", "before",
+    "between", "under", "above", "during", "through", "while", "both", "same",
+    "another", "such", "only", "own", "because", "being", "using", "used",
+    "based", "approach", "method", "study", "analysis", "results", "data",
+    "using", "different", "new", "novel", "proposed", "performance", "system",
+    "model", "application", "evaluation", "effect", "impact", "role", "role",
+}
+
+# ---------------------------------------------------------
 # CSS
 # ---------------------------------------------------------
 st.markdown("""
@@ -132,8 +178,103 @@ st.markdown("""
 .status-andamento { background:#fff3cd; color:#856404; padding:3px 8px; border-radius:10px; font-size:0.8rem;}
 .status-concluida { background:#d4edda; color:#155724; padding:3px 8px; border-radius:10px; font-size:0.8rem;}
 .status-outro { background:#f8d7da; color:#721c24; padding:3px 8px; border-radius:10px; font-size:0.8rem;}
+
+/* 🌥️ Nuvem de palavras */
+.wordcloud-container {
+    background: linear-gradient(135deg, #fafafa 0%, #f0f4f8 100%);
+    border: 1px solid #e0e6ed;
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    line-height: 2.2;
+    word-spacing: 4px;
+}
+.wordcloud-word {
+    display: inline-block;
+    margin: 4px 8px;
+    font-weight: 600;
+    transition: transform 0.2s ease;
+    cursor: default;
+}
+.wordcloud-word:hover {
+    transform: scale(1.15);
+}
+
+/* 🎬 Vídeo de entrada */
+.video-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    padding: 20px;
+    margin: 20px 0;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+}
+.video-wrapper {
+    position: relative;
+    padding-bottom: 56.25%; /* 16:9 aspect ratio */
+    height: 0;
+    overflow: hidden;
+    border-radius: 12px;
+    background: #000;
+}
+.video-wrapper video,
+.video-wrapper iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 12px;
+}
+.video-title {
+    color: white;
+    text-align: center;
+    margin-bottom: 15px;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
 </style>
 """, unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# 🎬 FUNÇÃO PARA EXIBIR VÍDEO
+# ---------------------------------------------------------
+def exibir_video_entrada():
+    """
+    Exibe o vídeo de entrada na página pública.
+    Prioriza arquivo local, fallback para OneDrive.
+    """
+    video_file = Path("videoEntrada.mp4")
+    onedrive_url = "https://1drv.ms/v/c/58f7c307dd0b40d5/IQA3PnOTq7oOSaSa-iZ9QFrpAWog0XjOwi8u-qlM0lf5IuE?e=rOp0G2"
+    
+    st.markdown("""
+    <div class="video-container">
+        <div class="video-title">🎬 Conheça o PPG</div>
+        <div class="video-wrapper">
+    """, unsafe_allow_html=True)
+    
+    # Tenta carregar vídeo local primeiro
+    if video_file.exists():
+        try:
+            video_bytes = video_file.read_bytes()
+            b64_video = base64.b64encode(video_bytes).decode()
+            video_html = f"""
+            <video controls autoplay muted loop playsinline>
+                <source src="data:video/mp4;base64,{b64_video}" type="video/mp4">
+                Seu navegador não suporta o elemento de vídeo.
+            </video>
+            """
+            st.markdown(video_html, unsafe_allow_html=True)
+        except Exception as e:
+            st.warning(f"Erro ao carregar vídeo local: {e}")
+            # Fallback para iframe do OneDrive
+            st.markdown(f'<iframe src="{onedrive_url}" frameborder="0" allowfullscreen></iframe>', 
+                       unsafe_allow_html=True)
+    else:
+        # Fallback para iframe do OneDrive
+        st.markdown(f'<iframe src="{onedrive_url}" frameborder="0" allowfullscreen></iframe>', 
+                   unsafe_allow_html=True)
+    
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # E-MAIL & PASSWORD HASH
@@ -321,6 +462,78 @@ def get_docente_username_by_name(nome):
     if m.any():
         return df[m].iloc[0]["username"]
     return None
+
+# ---------------------------------------------------------
+# 🌥️ NUVEM DE PALAVRAS
+# ---------------------------------------------------------
+def extrair_palavras_titulos(df_prod, top_n=60, min_freq=1, min_len=3):
+    """
+    Extrai as palavras mais frequentes dos títulos das produções.
+    Retorna lista de (palavra, frequência) ordenada por frequência.
+    """
+    if df_prod.empty or "titulo" not in df_prod.columns:
+        return []
+    
+    todas_palavras = []
+    for titulo in df_prod["titulo"].dropna():
+        # Normalizar: lowercase, remover pontuação
+        texto = str(titulo).lower()
+        # Remover pontuação e caracteres especiais
+        texto = re.sub(r'[^\w\s]', ' ', texto)
+        # Tokenizar
+        palavras = texto.split()
+        # Filtrar
+        for p in palavras:
+            p = p.strip()
+            if len(p) >= min_len and p not in STOPWORDS and not p.isdigit():
+                todas_palavras.append(p)
+    
+    if not todas_palavras:
+        return []
+    
+    contagem = Counter(todas_palavras)
+    # Filtrar por frequência mínima
+    palavras_filtradas = [(palavra, freq) for palavra, freq in contagem.items() if freq >= min_freq]
+    # Ordenar por frequência (decrescente)
+    palavras_filtradas.sort(key=lambda x: x[1], reverse=True)
+    
+    return palavras_filtradas[:top_n]
+
+def gerar_html_nuvem_palavras(palavras_frequencia, max_font_size=42, min_font_size=12):
+    """
+    Gera HTML estilizado para nuvem de palavras.
+    """
+    if not palavras_frequencia:
+        return '<p style="text-align:center; color:#999;">Nenhuma palavra encontrada nos títulos.</p>'
+    
+    max_freq = max(freq for _, freq in palavras_frequencia)
+    min_freq = min(freq for _, freq in palavras_frequencia)
+    
+    # Paleta de cores (tons acadêmicos)
+    cores = [
+        "#1976d2", "#388e3c", "#d32f2f", "#7b1fa2", "#f57c00",
+        "#00796b", "#5d4037", "#c2185b", "#0288d1", "#689f38",
+        "#e64a19", "#512da8", "#0097a7", "#455a64", "#ad1457",
+    ]
+    
+    html_parts = []
+    for idx, (palavra, freq) in enumerate(palavras_frequencia):
+        # Calcular tamanho de fonte proporcional
+        if max_freq == min_freq:
+            tamanho = max_font_size
+        else:
+            ratio = (freq - min_freq) / (max_freq - min_freq)
+            tamanho = int(min_font_size + ratio * (max_font_size - min_font_size))
+        
+        # Cor alternada
+        cor = cores[idx % len(cores)]
+        
+        html_parts.append(
+            f'<span class="wordcloud-word" style="font-size:{tamanho}px; color:{cor};" '
+            f'title="Aparece {freq}x nos títulos">{palavra}</span>'
+        )
+    
+    return '<div class="wordcloud-container">' + " ".join(html_parts) + '</div>'
 
 # ---------------------------------------------------------
 # FUNÇÕES DE CO-AUTORIA
@@ -669,7 +882,7 @@ def vinculo_submit(discente_username, orientador_username, producao_id):
 def renderizar_checkboxes_autoria(prefixo, discente_primeiro_default=False, docente_ultimo_default=False):
     st.markdown("""
     <div class="autoria-section">
-        <strong>️ Análise de Autoria</strong><br>
+        <strong>✍️ Análise de Autoria</strong><br>
         <small>Marque as opções que se aplicam a esta produção para enriquecer as estatísticas do programa.</small>
     </div>
     """, unsafe_allow_html=True)
@@ -684,7 +897,7 @@ def renderizar_checkboxes_autoria(prefixo, discente_primeiro_default=False, doce
         )
     with col_check2:
         docente_ultimo = st.checkbox(
-            "‍🏫 Docente do PPG é o primeiro/último autor",
+            "👨‍🏫 Docente do PPG é o primeiro/último autor",
             value=docente_ultimo_default,
             key=f"{prefixo}_docente_ultimo",
             help="Marque se o primeiro/último nome na lista de autores é um docente do PPG"
@@ -699,11 +912,11 @@ def renderizar_checkboxes_autoria(prefixo, discente_primeiro_default=False, doce
 def badge_status(status):
     status_lower = str(status).strip().lower()
     if status_lower in ["em andamento"]:
-        return f'<span class="status-andamento"> {status}</span>'
+        return f'<span class="status-andamento">⏳ {status}</span>'
     elif status_lower in ["concluída", "concluida"]:
         return f'<span class="status-concluida">✅ {status}</span>'
     else:
-        return f'<span class="status-outro">️ {status}</span>'
+        return f'<span class="status-outro">⚠️ {status}</span>'
 
 # ---------------------------------------------------------
 # SESSION
@@ -724,7 +937,7 @@ with st.sidebar:
         
         if st.button("🌐 Página Pública", use_container_width=True, key="btn_public_sidebar"):
             st.session_state.page = "public"; st.rerun()
-        if st.button(" Área Restrita", use_container_width=True, key="btn_private_sidebar"):
+        if st.button("🔒 Área Restrita", use_container_width=True, key="btn_private_sidebar"):
             st.session_state.page = "private"; st.rerun()
         
         st.divider()
@@ -736,7 +949,7 @@ with st.sidebar:
     else:
         st.info("🔓 Área Pública")
         st.caption("Visualize as produções e estatísticas")
-        if st.button(" Login", use_container_width=True, key="btn_login_sidebar"):
+        if st.button("🔑 Login", use_container_width=True, key="btn_login_sidebar"):
             st.session_state.page = "login"; st.rerun()
 
 # =========================================================
@@ -750,9 +963,12 @@ if st.session_state.page == "public":
     </div>
     """, unsafe_allow_html=True)
     
+    # 🎬 EXIBIR VÍDEO DE ENTRADA
+    exibir_video_entrada()
+    
     tab_dashboard, tab_producoes, tab_orient_pub, tab_ensino_pub, tab_impacto_pub = st.tabs([
-        "📊 Dashboard", " Produções Científicas", 
-        " Orientações", "📖 Ensino", " Impacto na Sociedade"
+        "📊 Dashboard", "📚 Produções Científicas", 
+        "🎓 Orientações", "📖 Ensino", "🌍 Impacto na Sociedade"
     ])
     
     with tab_dashboard:
@@ -787,6 +1003,38 @@ if st.session_state.page == "public":
             </div>""", unsafe_allow_html=True)
         
         st.divider()
+        
+        # 🌥️ NUVEM DE PALAVRAS
+        st.subheader("☁️ Nuvem de Palavras dos Títulos")
+        st.markdown("""
+        <div class="highlight-box">
+        <p><strong>📌 O que é isto?</strong> Visualização das palavras mais frequentes nos títulos das produções 
+        científicas do PPG. Palavras maiores aparecem com mais frequência. Passe o mouse sobre cada palavra 
+        para ver quantas vezes ela aparece.</p>
+        </div>""", unsafe_allow_html=True)
+        
+        df_prod_cloud = read_df(SHEET_PROD)
+        palavras_freq = extrair_palavras_titulos(df_prod_cloud, top_n=80, min_freq=1, min_len=3)
+        
+        if palavras_freq:
+            html_nuvem = gerar_html_nuvem_palavras(palavras_freq, max_font_size=48, min_font_size=14)
+            st.markdown(html_nuvem, unsafe_allow_html=True)
+            
+            # Legenda com top 10
+            st.markdown("#### 🔟 Top 10 palavras mais frequentes")
+            top10 = palavras_freq[:10]
+            col_a, col_b = st.columns(2)
+            with col_a:
+                for i, (pal, freq) in enumerate(top10[:5], 1):
+                    st.markdown(f"**{i}.** `{pal}` — {freq}x")
+            with col_b:
+                for i, (pal, freq) in enumerate(top10[5:], 6):
+                    st.markdown(f"**{i}.** `{pal}` — {freq}x")
+        else:
+            st.info("Ainda não há títulos cadastrados para gerar a nuvem de palavras.")
+        
+        st.divider()
+        
         st.subheader("🎓 Atividades Acadêmicas Complementares")
         
         c1, c2, c3 = st.columns(3)
@@ -816,7 +1064,7 @@ if st.session_state.page == "public":
         with col1:
             st.markdown(f"""
             <div class="highlight-box">
-                <h3 style="text-align:center; color:#667eea;"> {stats['total_periodicos_unicos']}</h3>
+                <h3 style="text-align:center; color:#667eea;">📚 {stats['total_periodicos_unicos']}</h3>
                 <p style="text-align:center; margin:0;"><strong>Periódicos diferentes</strong><br>onde o PPG publicou artigos</p>
             </div>""", unsafe_allow_html=True)
         with col2:
@@ -835,7 +1083,7 @@ if st.session_state.page == "public":
         st.subheader("🌍 Cooperação Internacional")
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("####  Produções com Pesquisadores Estrangeiros por Ano")
+            st.markdown("#### 📊 Produções com Pesquisadores Estrangeiros por Ano")
             df_estrangeiros = pd.DataFrame({
                 'Ano': list(stats['producoes_com_estrangeiros_por_ano'].keys()),
                 'Com Estrangeiros': list(stats['producoes_com_estrangeiros_por_ano'].values())
@@ -906,7 +1154,7 @@ if st.session_state.page == "public":
         st.dataframe(df_resumo, use_container_width=True)
     
     with tab_producoes:
-        st.subheader(" Produções Científicas")
+        st.subheader("📚 Produções Científicas")
         df_prod = read_df(SHEET_PROD)
         df_part = read_df(SHEET_PART)
         
@@ -930,7 +1178,7 @@ if st.session_state.page == "public":
             for ano in ANOS:
                 subset = df_filtrado[df_filtrado["ano"].astype(str).str.strip() == ano]
                 if not subset.empty:
-                    st.markdown(f"###  {ano}")
+                    st.markdown(f"### 📅 {ano}")
                     for _, row in subset.iterrows():
                         discente_primeiro = str(row.get("discente_primeiro_autor", "")).strip().lower()
                         tem_destaque = discente_primeiro == "sim"
@@ -952,7 +1200,7 @@ if st.session_state.page == "public":
                             if discente_primeiro == "sim":
                                 badges.append('<span class="badge-discente-1">🎓 Discente é 1º autor</span>')
                             if docente_ultimo == "sim":
-                                badges.append('<span class="badge-docente-last">‍🏫 Docente é último autor</span>')
+                                badges.append('<span class="badge-docente-last">👨‍🏫 Docente é último autor</span>')
                             if badges:
                                 st.markdown(" ".join(badges), unsafe_allow_html=True)
                             
@@ -970,7 +1218,7 @@ if st.session_state.page == "public":
                                 if any(parts["tipo_participacao"] == "Discente do PPG"):
                                     st.success("✅ Conta com participação de discente(s) do PPG")
                                 if any(parts["tipo_participacao"] == "Pesquisador estrangeiro"):
-                                    st.info(" Conta com participação de pesquisador(es) estrangeiro(s)")
+                                    st.info("🌍 Conta com participação de pesquisador(es) estrangeiro(s)")
                             else:
                                 st.info("Nenhuma participação registrada.")
             
@@ -978,7 +1226,7 @@ if st.session_state.page == "public":
                 st.info("Nenhuma produção encontrada com os filtros selecionados.")
     
     with tab_orient_pub:
-        st.subheader(" Orientações Acadêmicas")
+        st.subheader("🎓 Orientações Acadêmicas")
         df_orient = read_df(SHEET_ORIENT)
         df_users = read_df(SHEET_USERS)
         
@@ -1041,7 +1289,7 @@ if st.session_state.page == "public":
             for ano in ANOS:
                 subset = df_ens_filt[df_ens_filt["ano"].astype(str).str.strip() == ano]
                 if not subset.empty:
-                    st.markdown(f"###  {ano}")
+                    st.markdown(f"### 📅 {ano}")
                     for _, row in subset.iterrows():
                         docente_user = users_get(row["docente_username"]) if not df_users.empty else None
                         docente_nome = docente_user["name"] if docente_user else row["docente_username"]
@@ -1053,11 +1301,11 @@ if st.session_state.page == "public":
                             st.write(f"**Carga horária:** {row['carga_horaria'] or '—'} h")
                             desc = str(row.get('descricao', '')).strip()
                             if desc:
-                                st.markdown(f'<div class="descricao-box"><b> Descrição:</b><br>{desc}</div>', 
+                                st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{desc}</div>', 
                                            unsafe_allow_html=True)
     
     with tab_impacto_pub:
-        st.subheader(" Atividades de Impacto na Sociedade")
+        st.subheader("🌍 Atividades de Impacto na Sociedade")
         df_impacto = read_df(SHEET_IMPACTO)
         df_users = read_df(SHEET_USERS)
         
@@ -1145,9 +1393,6 @@ elif st.session_state.page == "private":
     
     st.success(f"Logado como **{user.get('name','')}**  | perfil: **{user_role}**")
     
-    # =========================================================
-    # PAINEL ADMIN (COORDENADOR)
-    # =========================================================
     if user_role == "admin":
         st.subheader("🛠️ Painel do Coordenador")
         df_users = read_df(SHEET_USERS)
@@ -1160,10 +1405,10 @@ elif st.session_state.page == "private":
         df_impacto = read_df(SHEET_IMPACTO)
 
         t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs([
-            "👥 Usuários", "👤 Cadastros pendentes", " Produções (geral)", 
+            "👥 Usuários", "👤 Cadastros pendentes", "📚 Produções (geral)", 
             "📊 Resumo por ano", "⚙️ Histórico", 
             "➕ Cadastrar Produção", 
-            " Orientações",
+            "🎓 Orientações",
             "📖 Ensino",
             "🌍 Impacto"
         ])
@@ -1204,7 +1449,7 @@ elif st.session_state.page == "private":
             if df_prod.empty: st.info("Sem produções.")
             else:
                 for ano in ANOS:
-                    st.markdown(f"###  {ano}")
+                    st.markdown(f"### 📅 {ano}")
                     subset = df_prod[df_prod["ano"].astype(str).str.strip() == ano]
                     if subset.empty: st.write("— Nenhuma produção registrada —")
                     else:
@@ -1373,7 +1618,7 @@ elif st.session_state.page == "private":
                                         st.write(f"**Carga horária:** {row['carga_horaria'] or '—'} h")
                                         desc = str(row.get('descricao', '')).strip()
                                         if desc:
-                                            st.markdown(f'<div class="descricao-box"><b> Descrição:</b><br>{desc}</div>', 
+                                            st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{desc}</div>', 
                                                        unsafe_allow_html=True)
                                         if st.button("🗑️ Excluir", key=f"del_ens_{row['id']}", use_container_width=True):
                                             ok, msg = ensino_delete(row['id'])
@@ -1439,9 +1684,6 @@ elif st.session_state.page == "private":
         
         st.divider()
 
-    # =========================================================
-    # PAINEL DOCENTE
-    # =========================================================
     elif user_role == "docente":
         st.subheader(f"📚 Minhas produções — {user.get('name','')}")
         df_prod = read_df(SHEET_PROD)
@@ -1477,15 +1719,15 @@ elif st.session_state.page == "private":
                                 st.markdown('<span class="autor-principal-badge">📝 Você é o responsável pelo cadastro</span>', 
                                            unsafe_allow_html=True)
                             else:
-                                st.markdown('<span class="coautor-badge"> Você participa como co-autor</span>', 
+                                st.markdown('<span class="coautor-badge">👥 Você participa como co-autor</span>', 
                                            unsafe_allow_html=True)
                             
                             badges = []
                             docente_ultimo = str(row.get("docente_ultimo_autor", "")).strip().lower()
                             if discente_primeiro == "sim":
-                                badges.append('<span class="badge-discente-1"> Discente é 1º autor</span>')
+                                badges.append('<span class="badge-discente-1">🎓 Discente é 1º autor</span>')
                             if docente_ultimo == "sim":
-                                badges.append('<span class="badge-docente-last">‍🏫 Docente é último autor</span>')
+                                badges.append('<span class="badge-docente-last">👨‍ Docente é último autor</span>')
                             if badges:
                                 st.markdown(" ".join(badges), unsafe_allow_html=True)
                             
@@ -1524,7 +1766,7 @@ elif st.session_state.page == "private":
                 veiculo = st.text_input("Veículo/Periódico", key="prod_veiculo")
                 autores = st.text_input("Autores (separados por vírgula, na ordem)", key="prod_autores")
                 doi = st.text_input("DOI (opcional)", key="prod_doi")
-            descricao = st.text_area(" Descrição qualitativa (opcional)",
+            descricao = st.text_area("📝 Descrição qualitativa (opcional)",
                 placeholder="Descreva o contexto, relevância, impacto...", height=100, key="prod_descricao")
             st.markdown("**👥 Co-autores do PPG (opcional)**")
             docentes_list = listar_docentes()
@@ -1572,7 +1814,6 @@ elif st.session_state.page == "private":
                                            discente_primeiro_str, docente_ultimo_str)
                             st.success("Produção cadastrada com sucesso!"); st.rerun()
         
-        # Edição
         if 'editing_prod_id' in st.session_state:
             pid = st.session_state['editing_prod_id']
             prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
@@ -1600,7 +1841,6 @@ elif st.session_state.page == "private":
                     docentes_list = listar_docentes()
                     docentes_list = [d for d in docentes_list if d != user.get('name', '')]
                     
-                    # ✅ CORREÇÃO: Filtrar apenas nomes que existem na lista de docentes
                     co_autores_atuais_str = str(prod_data.get('co_autores', '')).strip() if "co_autores" in prod_data.index else ""
                     co_autores_atuais_list = [u.strip() for u in co_autores_atuais_str.split(",") if u.strip()] if co_autores_atuais_str else []
                     
@@ -1644,11 +1884,10 @@ elif st.session_state.page == "private":
                                                          discente_primeiro_str, docente_ultimo_str)
                                 if ok: st.session_state.pop('editing_prod_id', None); st.success(msg); st.rerun()
                     with c_cancel:
-                        if st.form_submit_button(" Cancelar", use_container_width=True):
+                        if st.form_submit_button("❌ Cancelar", use_container_width=True):
                             st.session_state.pop('editing_prod_id', None); st.rerun()
             st.divider()
 
-        # Exclusão
         if 'deleting_prod_id' in st.session_state:
             pid = st.session_state['deleting_prod_id']
             prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
@@ -1666,9 +1905,6 @@ elif st.session_state.page == "private":
                         st.session_state.pop('deleting_prod_id', None); st.rerun()
             st.divider()
 
-    # =========================================================
-    # PAINEL DISCENTE
-    # =========================================================
     elif user_role == "discente":
         st.subheader(f"🎓 Minha trajetória — {user.get('name','')}")
         orientador_nome = user.get("orientador", "")
