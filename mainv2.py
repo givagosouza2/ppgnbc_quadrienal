@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import gspread
 from google.oauth2.service_account import Credentials
 from gspread.exceptions import APIError, WorksheetNotFound, SpreadsheetNotFound
