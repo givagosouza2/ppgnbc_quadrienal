@@ -969,16 +969,6 @@ if st.session_state.page == "public":
             fig_wordcloud = gerar_wordcloud(texto_titulos, max_words=100)
             if fig_wordcloud:
                 st.pyplot(fig_wordcloud)
-                
-                st.markdown("#### 🔟 Top 10 palavras mais frequentes")
-                palavras_freq = Counter(texto_titulos.split()).most_common(10)
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    for i, (pal, freq) in enumerate(palavras_freq[:5], 1):
-                        st.markdown(f"**{i}.** `{pal}` — {freq}x")
-                with col_b:
-                    for i, (pal, freq) in enumerate(palavras_freq[5:], 6):
-                        st.markdown(f"**{i}.** `{pal}` — {freq}x")
         else:
             st.info("Ainda não há títulos cadastrados para gerar a nuvem de palavras.")
         
