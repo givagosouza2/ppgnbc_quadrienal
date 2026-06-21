@@ -229,7 +229,7 @@ def exibir_video_entrada():
     onedrive_url = "https://1drv.ms/v/c/58f7c307dd0b40d5/IQA3PnOTq7oOSaSa-iZ9QFrpAWog0XjOwi8u-qlM0lf5IuE?e=rOp0G2"
     
     # ✅ Centraliza o vídeo usando colunas (1 parte | 4 partes | 1 parte)
-    col_esq, col_video, col_dir = st.columns([1, 4, 1])
+    col_esq, col_video, col_dir = st.columns([1, 8, 1])
     
     with col_video:      
         if video_file.exists():
