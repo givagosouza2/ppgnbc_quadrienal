@@ -1,4 +1,4 @@
-# app.py — Sistema de Monitoramento de Produção do PPG (v6.8 - WordCloud)
+# app.py — Sistema de Monitoramento de Produção do PPG (v6.9 - Vídeo Centralizado)
 # Streamlit + Google Sheets + E-mails
 # =========================================================
 
@@ -181,12 +181,13 @@ st.markdown("""
 .status-concluida { background:#d4edda; color:#155724; padding:3px 8px; border-radius:10px; font-size:0.8rem;}
 .status-outro { background:#f8d7da; color:#721c24; padding:3px 8px; border-radius:10px; font-size:0.8rem;}
 
-/* 🎬 Vídeo de entrada */
+/* 🎬 Vídeo de entrada - LARGURA CONTROLADA E CENTRALIZADO */
 .video-container {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 16px;
     padding: 20px;
-    margin: 20px 0;
+    margin: 20px auto;
+    max-width: 800px;
     box-shadow: 0 8px 16px rgba(0,0,0,0.1);
 }
 .video-wrapper {
@@ -196,6 +197,7 @@ st.markdown("""
     overflow: hidden;
     border-radius: 12px;
     background: #000;
+    max-width: 100%;
 }
 .video-wrapper video,
 .video-wrapper iframe {
@@ -217,42 +219,45 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 🎬 FUNÇÃO PARA EXIBIR VÍDEO
+# 🎬 FUNÇÃO PARA EXIBIR VÍDEO (CENTRALIZADO)
 # ---------------------------------------------------------
 def exibir_video_entrada():
     """
-    Exibe o vídeo de entrada na página pública.
-    Prioriza arquivo local, fallback para OneDrive.
+    Exibe o vídeo de entrada na página pública com largura controlada e centralizado.
     """
     video_file = Path("videoEntrada.mp4")
     onedrive_url = "https://1drv.ms/v/c/58f7c307dd0b40d5/IQA3PnOTq7oOSaSa-iZ9QFrpAWog0XjOwi8u-qlM0lf5IuE?e=rOp0G2"
     
-    #st.markdown("""
-    #<div class="video-container">
-    #    <div class="video-title">🎬 Conheça o PPG</div>
-    #    <div class="video-wrapper">
-    #""", unsafe_allow_html=True)
+    # ✅ Centraliza o vídeo usando colunas (1 parte | 4 partes | 1 parte)
+    col_esq, col_video, col_dir = st.columns([1, 4, 1])
     
-    if video_file.exists():
-        try:
-            video_bytes = video_file.read_bytes()
-            b64_video = base64.b64encode(video_bytes).decode()
-            video_html = f"""
-            <video controls autoplay muted loop playsinline>
-                <source src="data:video/mp4;base64,{b64_video}" type="video/mp4">
-                Seu navegador não suporta o elemento de vídeo.
-            </video>
-            """
-            st.markdown(video_html, unsafe_allow_html=True)
-        except Exception as e:
-            st.warning(f"Erro ao carregar vídeo local: {e}")
+    with col_video:
+        st.markdown("""
+        <div class="video-container">
+            <div class="video-title">🎬 Conheça o PPG</div>
+            <div class="video-wrapper">
+        """, unsafe_allow_html=True)
+        
+        if video_file.exists():
+            try:
+                video_bytes = video_file.read_bytes()
+                b64_video = base64.b64encode(video_bytes).decode()
+                video_html = f"""
+                <video controls autoplay muted loop playsinline>
+                    <source src="data:video/mp4;base64,{b64_video}" type="video/mp4">
+                    Seu navegador não suporta o elemento de vídeo.
+                </video>
+                """
+                st.markdown(video_html, unsafe_allow_html=True)
+            except Exception as e:
+                st.warning(f"Erro ao carregar vídeo local: {e}")
+                st.markdown(f'<iframe src="{onedrive_url}" frameborder="0" allowfullscreen></iframe>', 
+                           unsafe_allow_html=True)
+        else:
             st.markdown(f'<iframe src="{onedrive_url}" frameborder="0" allowfullscreen></iframe>', 
                        unsafe_allow_html=True)
-    else:
-        st.markdown(f'<iframe src="{onedrive_url}" frameborder="0" allowfullscreen></iframe>', 
-                   unsafe_allow_html=True)
-    
-    st.markdown("</div></div>", unsafe_allow_html=True)
+        
+        st.markdown("</div></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # E-MAIL & PASSWORD HASH
@@ -445,10 +450,6 @@ def get_docente_username_by_name(nome):
 # ☁️ NUVEM DE PALAVRAS (WordCloud)
 # ---------------------------------------------------------
 def extrair_texto_titulos(df_prod):
-    """
-    Extrai e processa texto dos títulos para WordCloud.
-    Retorna string com todas as palavras filtradas.
-    """
     if df_prod.empty or "titulo" not in df_prod.columns:
         return ""
     
@@ -465,10 +466,6 @@ def extrair_texto_titulos(df_prod):
     return " ".join(todas_palavras)
 
 def gerar_wordcloud(texto, max_words=100):
-    """
-    Gera WordCloud a partir do texto.
-    Retorna figura matplotlib.
-    """
     if not texto:
         return None
     
@@ -917,9 +914,7 @@ if st.session_state.page == "public":
     </div>
     """, unsafe_allow_html=True)
     
-    coluna1,coluna2,coluna3 = st.columns([0.2,1,0.2])
-    with coluna2:
-        exibir_video_entrada()
+    exibir_video_entrada()
     
     tab_dashboard, tab_producoes, tab_orient_pub, tab_ensino_pub, tab_impacto_pub = st.tabs([
         "📊 Dashboard", "📚 Produções Científicas", 
@@ -959,7 +954,6 @@ if st.session_state.page == "public":
         
         st.divider()
         
-        # ☁️ NUVEM DE PALAVRAS COM WORDCLOUD
         st.subheader("☁️ Nuvem de Palavras dos Títulos")
         st.markdown("""
         <div class="highlight-box">
@@ -975,7 +969,6 @@ if st.session_state.page == "public":
             if fig_wordcloud:
                 st.pyplot(fig_wordcloud)
                 
-                # Top 10 palavras
                 st.markdown("#### 🔟 Top 10 palavras mais frequentes")
                 palavras_freq = Counter(texto_titulos.split()).most_common(10)
                 col_a, col_b = st.columns(2)
