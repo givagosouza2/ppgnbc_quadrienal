@@ -917,7 +917,9 @@ if st.session_state.page == "public":
     </div>
     """, unsafe_allow_html=True)
     
-    exibir_video_entrada()
+    coluna1,coluna2,coluna3 = st.columns([0.2,1,0.2])
+    with coluna2:
+        exibir_video_entrada()
     
     tab_dashboard, tab_producoes, tab_orient_pub, tab_ensino_pub, tab_impacto_pub = st.tabs([
         "📊 Dashboard", "📚 Produções Científicas", 
