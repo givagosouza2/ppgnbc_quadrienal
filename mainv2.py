@@ -231,13 +231,7 @@ def exibir_video_entrada():
     # ✅ Centraliza o vídeo usando colunas (1 parte | 4 partes | 1 parte)
     col_esq, col_video, col_dir = st.columns([1, 4, 1])
     
-    with col_video:
-        st.markdown("""
-        <div class="video-container">
-            <div class="video-title">🎬 Conheça o PPG</div>
-            <div class="video-wrapper">
-        """, unsafe_allow_html=True)
-        
+    with col_video:      
         if video_file.exists():
             try:
                 video_bytes = video_file.read_bytes()
