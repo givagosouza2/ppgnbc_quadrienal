@@ -1238,4 +1238,473 @@ elif st.session_state.page == "private":
                 selected_username = docente_options[selected_label]
                 st.divider()
                 with st.form("admin_form_prod"):
-                    c1, c2 = st.columns(
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        titulo = st.text_input("Título", key="admin_prod_titulo")
+                        tipo = st.selectbox("Tipo", TIPOS_PRODUCAO, key="admin_prod_tipo")
+                        ano = st.selectbox("Ano", ANOS, key="admin_prod_ano")
+                    with c2:
+                        veiculo = st.text_input("Veículo/Periódico", key="admin_prod_veiculo")
+                        autores = st.text_input("Autores (separados por vírgula, na ordem)", key="admin_prod_autores")
+                        doi = st.text_input("DOI (opcional)", key="admin_prod_doi")
+                    descricao = st.text_area("📝 Descrição qualitativa (opcional)",
+                        placeholder="Descreva o contexto, relevância, impacto...", height=100, key="admin_prod_descricao")
+                    st.markdown("**👥 Co-autores do PPG (opcional)**")
+                    docentes_list = listar_docentes()
+                    docentes_list = [d for d in docentes_list if d != selected_label.split(" (")[0]]
+                    co_autores_selecionados = st.multiselect(
+                        "Selecione outros docentes do PPG que são co-autores:",
+                        docentes_list, key="admin_prod_coautores")
+                    co_autores_usernames = ",".join([
+                        get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
+                    
+                    discente_primeiro_str, docente_ultimo_str = renderizar_checkboxes_autoria("admin_cad")
+                    
+                    submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
+                    if submitted:
+                        if not titulo.strip(): st.error("Título é obrigatório.")
+                        else:
+                            producao_submit(selected_username, titulo, tipo, ano, veiculo, 
+                                           autores, doi, descricao, co_autores_usernames,
+                                           discente_primeiro_str, docente_ultimo_str)
+                            st.success(f"Produção cadastrada para {selected_label.split(' (')[0]}!")
+                            st.rerun()
+        
+        # 🆕 TAB ORIENTAÇÕES
+        with t7:
+            st.subheader("🎓 Orientações Acadêmicas")
+            docentes_df = df_users[df_users["role"].str.lower().isin(["docente", "professor"])] if not df_users.empty else pd.DataFrame()
+            
+            if docentes_df.empty:
+                st.info("Cadastre docentes primeiro.")
+            else:
+                docente_options = {f"{row['name']} ({row['username']})": row['username'] for _, row in docentes_df.iterrows()}
+                selected_label = st.selectbox("Selecione o Docente orientador", list(docente_options.keys()), 
+                                              key="sel_doc_orient")
+                selected_username = docente_options[selected_label]
+                st.divider()
+                
+                with st.form("form_orient"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        discente_nome = st.text_input("Nome do discente", key="ori_discente")
+                        tipo = st.selectbox("Tipo de orientação", TIPOS_ORIENTACAO, key="ori_tipo")
+                        titulo = st.text_input("Título da orientação/trabalho", key="ori_titulo")
+                        status = st.selectbox("Status", STATUS_ORIENTACAO, key="ori_status")
+                    with c2:
+                        instituicao = st.text_input("Instituição do discente", key="ori_inst")
+                        ano_inicio = st.selectbox("Ano de início", ANOS, key="ori_ano_ini")
+                        anos_concl = [""] + ANOS
+                        ano_conclusao = st.selectbox("Ano de conclusão (se aplicável)", anos_concl, key="ori_ano_conc")
+                        observacoes = st.text_area("Observações (opcional)", height=80, key="ori_obs")
+                    
+                    submitted = st.form_submit_button("💾 Cadastrar orientação", use_container_width=True)
+                    if submitted:
+                        if not discente_nome.strip() or not titulo.strip():
+                            st.error("Nome do discente e título são obrigatórios.")
+                        else:
+                            orientacao_submit(selected_username, discente_nome, tipo, titulo,
+                                             ano_inicio, ano_conclusao, status, instituicao, observacoes)
+                            st.success(f"Orientação cadastrada para {selected_label.split(' (')[0]}!")
+                            st.rerun()
+                
+                st.divider()
+                st.markdown("### 📋 Orientações cadastradas")
+                if df_orient.empty:
+                    st.info("Nenhuma orientação cadastrada.")
+                else:
+                    ori_docente = df_orient[df_orient["docente_username"] == selected_username]
+                    if ori_docente.empty:
+                        st.info(f"Sem orientações para {selected_label.split(' (')[0]}.")
+                    else:
+                        for _, row in ori_docente.iterrows():
+                            with st.expander(f"**{row['titulo']}** — {row['tipo']} ({row['ano_inicio']} → {row['ano_conclusao'] or '?'})"):
+                                st.markdown(badge_status(row['status']), unsafe_allow_html=True)
+                                st.write(f"**Discente:** {row['discente_nome']}")
+                                st.write(f"**Instituição:** {row['instituicao'] or '—'}")
+                                obs = str(row.get('observacoes', '')).strip()
+                                if obs:
+                                    st.markdown(f'<div class="descricao-box"><b>📝 Observações:</b><br>{obs}</div>', 
+                                               unsafe_allow_html=True)
+                                if st.button("🗑️ Excluir", key=f"del_ori_{row['id']}", use_container_width=True):
+                                    ok, msg = orientacao_delete(row['id'])
+                                    if ok: st.success(msg); st.rerun()
+                                    else: st.error(msg)
+        
+        # 🆕 TAB ENSINO
+        with t8:
+            st.subheader("📖 Atividades de Ensino")
+            docentes_df = df_users[df_users["role"].str.lower().isin(["docente", "professor"])] if not df_users.empty else pd.DataFrame()
+            
+            if docentes_df.empty:
+                st.info("Cadastre docentes primeiro.")
+            else:
+                docente_options = {f"{row['name']} ({row['username']})": row['username'] for _, row in docentes_df.iterrows()}
+                selected_label = st.selectbox("Selecione o Docente", list(docente_options.keys()), 
+                                              key="sel_doc_ensino")
+                selected_username = docente_options[selected_label]
+                st.divider()
+                
+                with st.form("form_ensino"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        tipo = st.selectbox("Tipo de atividade", TIPOS_ENSINO, key="ens_tipo")
+                        titulo = st.text_input("Título da disciplina/atividade", key="ens_titulo")
+                        ano = st.selectbox("Ano", ANOS, key="ens_ano")
+                    with c2:
+                        periodo = st.text_input("Período (ex: 2026.1)", key="ens_periodo")
+                        carga_horaria = st.number_input("Carga horária (horas)", min_value=0, step=1, key="ens_ch")
+                        nivel = st.selectbox("Nível", NIVEIS_ENSINO, key="ens_nivel")
+                    descricao = st.text_area("Descrição (opcional)", height=80, key="ens_desc")
+                    
+                    submitted = st.form_submit_button("💾 Cadastrar atividade", use_container_width=True)
+                    if submitted:
+                        if not titulo.strip():
+                            st.error("Título é obrigatório.")
+                        else:
+                            ensino_submit(selected_username, tipo, titulo, periodo, ano,
+                                         carga_horaria, nivel, descricao)
+                            st.success(f"Atividade cadastrada para {selected_label.split(' (')[0]}!")
+                            st.rerun()
+                
+                st.divider()
+                st.markdown("### 📋 Atividades cadastradas")
+                if df_ensino.empty:
+                    st.info("Nenhuma atividade cadastrada.")
+                else:
+                    ens_docente = df_ensino[df_ensino["docente_username"] == selected_username]
+                    if ens_docente.empty:
+                        st.info(f"Sem atividades para {selected_label.split(' (')[0]}.")
+                    else:
+                        for ano in ANOS:
+                            subset = ens_docente[ens_docente["ano"].astype(str).str.strip() == ano]
+                            if not subset.empty:
+                                st.markdown(f"#### 📅 {ano}")
+                                for _, row in subset.iterrows():
+                                    with st.expander(f"**{row['titulo']}** — {row['tipo']}"):
+                                        st.write(f"**Período:** {row['periodo'] or '—'}")
+                                        st.write(f"**Nível:** {row['nivel']}")
+                                        st.write(f"**Carga horária:** {row['carga_horaria'] or '—'} h")
+                                        desc = str(row.get('descricao', '')).strip()
+                                        if desc:
+                                            st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{desc}</div>', 
+                                                       unsafe_allow_html=True)
+                                        if st.button("🗑️ Excluir", key=f"del_ens_{row['id']}", use_container_width=True):
+                                            ok, msg = ensino_delete(row['id'])
+                                            if ok: st.success(msg); st.rerun()
+                                            else: st.error(msg)
+        
+        # 🆕 TAB IMPACTO
+        with t9:
+            st.subheader("🌍 Atividades de Impacto na Sociedade")
+            docentes_df = df_users[df_users["role"].str.lower().isin(["docente", "professor"])] if not df_users.empty else pd.DataFrame()
+            
+            if docentes_df.empty:
+                st.info("Cadastre docentes primeiro.")
+            else:
+                docente_options = {f"{row['name']} ({row['username']})": row['username'] for _, row in docentes_df.iterrows()}
+                selected_label = st.selectbox("Selecione o Docente", list(docente_options.keys()), 
+                                              key="sel_doc_impacto")
+                selected_username = docente_options[selected_label]
+                st.divider()
+                
+                with st.form("form_impacto"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        tipo = st.selectbox("Tipo de atividade", TIPOS_IMPACTO, key="imp_tipo")
+                        titulo = st.text_input("Título da atividade", key="imp_titulo")
+                        data = st.text_input("Data (ex: 2026-03-15)", key="imp_data")
+                    with c2:
+                        local = st.text_input("Local/instituição", key="imp_local")
+                        publico_alvo = st.text_input("Público-alvo", key="imp_publico")
+                    descricao = st.text_area("Descrição detalhada", height=100, key="imp_desc")
+                    
+                    submitted = st.form_submit_button("💾 Cadastrar atividade", use_container_width=True)
+                    if submitted:
+                        if not titulo.strip():
+                            st.error("Título é obrigatório.")
+                        else:
+                            impacto_submit(selected_username, tipo, titulo, descricao, 
+                                          data, publico_alvo, local)
+                            st.success(f"Atividade cadastrada para {selected_label.split(' (')[0]}!")
+                            st.rerun()
+                
+                st.divider()
+                st.markdown("### 📋 Atividades cadastradas")
+                if df_impacto.empty:
+                    st.info("Nenhuma atividade cadastrada.")
+                else:
+                    imp_docente = df_impacto[df_impacto["docente_username"] == selected_username]
+                    if imp_docente.empty:
+                        st.info(f"Sem atividades para {selected_label.split(' (')[0]}.")
+                    else:
+                        for _, row in imp_docente.iterrows():
+                            with st.expander(f"**{row['titulo']}** — {row['tipo']}"):
+                                st.write(f"**Data:** {row['data'] or '—'}")
+                                st.write(f"**Local:** {row['local'] or '—'}")
+                                st.write(f"**Público-alvo:** {row['publico_alvo'] or '—'}")
+                                desc = str(row.get('descricao', '')).strip()
+                                if desc:
+                                    st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{desc}</div>', 
+                                               unsafe_allow_html=True)
+                                if st.button("🗑️ Excluir", key=f"del_imp_{row['id']}", use_container_width=True):
+                                    ok, msg = impacto_delete(row['id'])
+                                    if ok: st.success(msg); st.rerun()
+                                    else: st.error(msg)
+        
+        st.divider()
+
+    # =========================================================
+    # PAINEL DOCENTE
+    # =========================================================
+    elif user_role == "docente":
+        st.subheader(f"📚 Minhas produções — {user.get('name','')}")
+        df_prod = read_df(SHEET_PROD)
+        df_part = read_df(SHEET_PART)
+        todas_producoes = get_minhas_producoes(user_username)
+        
+        st.markdown("### 📋 Minhas produções")
+        if todas_producoes.empty:
+            st.info("Nenhuma produção cadastrada.")
+        else:
+            for ano in ANOS:
+                subset = todas_producoes[todas_producoes["ano"].astype(str).str.strip() == ano]
+                if not subset.empty:
+                    st.markdown(f"#### 📅 {ano}")
+                    for _, row in subset.iterrows():
+                        eh_principal = row.get("tipo_autoria", "") == "principal"
+                        with st.expander(f"**{row['titulo']}** — {row['tipo']}"):
+                            autor_principal_nome = get_nome_autor_principal(row["docente_username"])
+                            st.markdown(f'<span class="main-author-tag">👤 Autor Principal: {autor_principal_nome}</span>', 
+                                       unsafe_allow_html=True)
+                            if eh_principal:
+                                st.markdown('<span class="autor-principal-badge">📝 Você é o responsável pelo cadastro</span>', 
+                                           unsafe_allow_html=True)
+                            else:
+                                st.markdown('<span class="coautor-badge">👥 Você participa como co-autor</span>', 
+                                           unsafe_allow_html=True)
+                            
+                            badges = []
+                            discente_primeiro = str(row.get("discente_primeiro_autor", "")).strip().lower()
+                            docente_ultimo = str(row.get("docente_ultimo_autor", "")).strip().lower()
+                            if discente_primeiro == "sim":
+                                badges.append('<span class="badge-discente-1">🎓 Discente é 1º autor</span>')
+                            if docente_ultimo == "sim":
+                                badges.append('<span class="badge-docente-last">👨‍🏫 Docente é último autor</span>')
+                            if badges:
+                                st.markdown(" ".join(badges), unsafe_allow_html=True)
+                            
+                            st.write(f"**Veículo:** {row['veiculo']}")
+                            st.write(f"**Autores:** {row['autores']}")
+                            st.write(f"**DOI:** {row['doi'] or '—'}")
+                            descricao_text = str(row.get('descricao', '')).strip()
+                            if descricao_text:
+                                st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{descricao_text}</div>', 
+                                           unsafe_allow_html=True)
+                            parts = df_part[df_part["producao_id"] == row["id"]] if not df_part.empty else pd.DataFrame()
+                            if not parts.empty:
+                                st.write("**Participações:**")
+                                st.dataframe(parts[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
+                            if eh_principal:
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if st.button("✏️ Editar", key=f"edit_{row['id']}", use_container_width=True):
+                                        st.session_state['editing_prod_id'] = row['id']; st.rerun()
+                                with col2:
+                                    if st.button("🗑️ Excluir", key=f"del_{row['id']}", use_container_width=True):
+                                        st.session_state['deleting_prod_id'] = row['id']; st.rerun()
+                            else:
+                                st.info("💡 Co-autores podem visualizar, mas não editar/excluir esta produção.")
+        
+        st.divider()
+        
+        st.subheader("➕ Cadastrar nova produção")
+        with st.form("form_prod"):
+            c1, c2 = st.columns(2)
+            with c1:
+                titulo = st.text_input("Título", key="prod_titulo")
+                tipo = st.selectbox("Tipo", TIPOS_PRODUCAO, key="prod_tipo")
+                ano = st.selectbox("Ano", ANOS, key="prod_ano")
+            with c2:
+                veiculo = st.text_input("Veículo/Periódico", key="prod_veiculo")
+                autores = st.text_input("Autores (separados por vírgula, na ordem)", key="prod_autores")
+                doi = st.text_input("DOI (opcional)", key="prod_doi")
+            descricao = st.text_area("📝 Descrição qualitativa (opcional)",
+                placeholder="Descreva o contexto, relevância, impacto...", height=100, key="prod_descricao")
+            st.markdown("**👥 Co-autores do PPG (opcional)**")
+            docentes_list = listar_docentes()
+            docentes_list = [d for d in docentes_list if d != user.get('name', '')]
+            co_autores_selecionados = st.multiselect(
+                "Selecione outros docentes do PPG que são co-autores:",
+                docentes_list, key="prod_coautores")
+            co_autores_usernames = ",".join([
+                get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
+            
+            discente_primeiro_str, docente_ultimo_str = renderizar_checkboxes_autoria("docente_cad")
+            
+            submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
+            if submitted:
+                if not titulo.strip():
+                    st.error("Título é obrigatório.")
+                else:
+                    if doi or titulo:
+                        duplicata = verificar_duplicacao(doi, titulo)
+                        if duplicata is not None:
+                            autor_principal = users_get(duplicata["docente_username"])
+                            autor_nome = autor_principal["name"] if autor_principal else duplicata["docente_username"]
+                            st.error(f"""
+                            ⚠️ **Produção já cadastrada!**
+                            **DOI:** {duplicata.get('doi', 'N/A')}  
+                            **Cadastrada por:** {autor_nome}  
+                            **Data:** {duplicata.get('created_at', 'N/A')}
+                            Deseja se adicionar como co-autor ao invés de criar nova?
+                            """)
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if st.button("✅ Sim, adicionar como co-autor", key="btn_coautor_submit"):
+                                    ok, msg = adicionar_co_autor(duplicata["id"], user_username)
+                                    if ok: st.success(msg); st.balloons(); time.sleep(2); st.rerun()
+                                    else: st.error(msg)
+                            with col2:
+                                if st.button("❌ Não, cadastrar como nova", key="btn_forcar_nova"):
+                                    producao_submit(user_username, titulo, tipo, ano, veiculo, 
+                                                   autores, doi, descricao, co_autores_usernames,
+                                                   discente_primeiro_str, docente_ultimo_str)
+                                    st.success("Produção cadastrada!"); st.rerun()
+                        else:
+                            producao_submit(user_username, titulo, tipo, ano, veiculo, 
+                                           autores, doi, descricao, co_autores_usernames,
+                                           discente_primeiro_str, docente_ultimo_str)
+                            st.success("Produção cadastrada com sucesso!"); st.rerun()
+        
+        # Edição
+        if 'editing_prod_id' in st.session_state:
+            pid = st.session_state['editing_prod_id']
+            prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
+            prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
+            if prod_data is not None:
+                st.markdown("### ✏️ Editar produção")
+                with st.form(f"form_edit_{pid}"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        titulo = st.text_input("Título", value=prod_data['titulo'], key=f"edit_titulo_{pid}")
+                        tipo_idx = TIPOS_PRODUCAO.index(prod_data['tipo']) if prod_data['tipo'] in TIPOS_PRODUCAO else 0
+                        tipo = st.selectbox("Tipo", TIPOS_PRODUCAO, index=tipo_idx, key=f"edit_tipo_{pid}")
+                        ano_clean = str(prod_data['ano']).strip()
+                        ano_idx = ANOS.index(ano_clean) if ano_clean in ANOS else 0
+                        ano = st.selectbox("Ano", ANOS, index=ano_idx, key=f"edit_ano_{pid}")
+                    with c2:
+                        veiculo = st.text_input("Veículo", value=prod_data['veiculo'], key=f"edit_veiculo_{pid}")
+                        autores = st.text_input("Autores (separados por vírgula, na ordem)", value=prod_data['autores'], key=f"edit_autores_{pid}")
+                        doi = st.text_input("DOI", value=prod_data['doi'], key=f"edit_doi_{pid}")
+                    descricao_atual = str(prod_data.get('descricao', '')).strip()
+                    descricao = st.text_area("📝 Descrição qualitativa", value=descricao_atual,
+                        placeholder="Descreva o contexto, relevância, impacto...", height=100, key=f"edit_descricao_{pid}")
+                    st.markdown("**👥 Co-autores do PPG**")
+                    co_autores_atuais_str = str(prod_data.get('co_autores', '')).strip() if "co_autores" in prod_data.index else ""
+                    co_autores_atuais_list = co_autores_atuais_str.split(",") if co_autores_atuais_str else []
+                    co_autores_nomes = [
+                        users_get(username)["name"] if users_get(username) else username
+                        for username in co_autores_atuais_list]
+                    docentes_list = listar_docentes()
+                    docentes_list = [d for d in docentes_list if d != user.get('name', '')]
+                    co_autores_selecionados = st.multiselect(
+                        "Selecione co-autores:", docentes_list, default=co_autores_nomes, key=f"edit_coautores_{pid}")
+                    co_autores_usernames = ",".join([
+                        get_docente_username_by_name(nome) for nome in co_autores_selecionados if get_docente_username_by_name(nome)])
+                    
+                    discente_primeiro_atual = str(prod_data.get('discente_primeiro_autor', '')).strip().lower() == "sim"
+                    docente_ultimo_atual = str(prod_data.get('docente_ultimo_autor', '')).strip().lower() == "sim"
+                    discente_primeiro_str, docente_ultimo_str = renderizar_checkboxes_autoria(
+                        f"edit_{pid}", discente_primeiro_atual, docente_ultimo_atual)
+                    
+                    st.divider()
+                    st.subheader("👥 Participações")
+                    parts_current = df_part[df_part["producao_id"] == pid] if not df_part.empty else pd.DataFrame()
+                    if not parts_current.empty:
+                        st.dataframe(parts_current[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
+                    c3, c4 = st.columns(2)
+                    with c3: tipo_p = st.selectbox("Tipo", TIPOS_PARTICIPACAO, key=f"part_tipo_{pid}")
+                    with c4: nome_p = st.text_input("Nome", key=f"part_nome_{pid}")
+                    vinc = st.text_input("Vínculo (opcional)", key=f"part_vinc_{pid}")
+                    c_save1, c_save2, c_cancel = st.columns([1, 1, 1])
+                    with c_save1:
+                        if st.form_submit_button("➕ Add participação", use_container_width=True):
+                            if nome_p.strip(): participacao_submit(pid, tipo_p, nome_p, vinc); st.success("Adicionado!"); st.rerun()
+                    with c_save2:
+                        if st.form_submit_button("💾 Salvar", use_container_width=True):
+                            if titulo.strip():
+                                ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, 
+                                                         autores, doi, descricao, co_autores_usernames,
+                                                         discente_primeiro_str, docente_ultimo_str)
+                                if ok: st.session_state.pop('editing_prod_id', None); st.success(msg); st.rerun()
+                    with c_cancel:
+                        if st.form_submit_button("❌ Cancelar", use_container_width=True):
+                            st.session_state.pop('editing_prod_id', None); st.rerun()
+            st.divider()
+
+        # Exclusão
+        if 'deleting_prod_id' in st.session_state:
+            pid = st.session_state['deleting_prod_id']
+            prod_filtered = df_prod[df_prod["id"] == pid] if not df_prod.empty else pd.DataFrame()
+            prod_data = prod_filtered.iloc[0] if not prod_filtered.empty else None
+            if prod_data is not None:
+                st.error(f"🗑️ Excluir: {prod_data['titulo']}")
+                st.warning("⚠️ Esta ação não pode ser desfeita!")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("Sim, excluir", type="primary", use_container_width=True, key=f"btn_confirm_del_{pid}"):
+                        ok, msg = producao_delete(pid)
+                        if ok: st.session_state.pop('deleting_prod_id', None); st.success(msg); st.rerun()
+                with c2:
+                    if st.button("Cancelar", use_container_width=True, key=f"btn_cancel_del_{pid}"):
+                        st.session_state.pop('deleting_prod_id', None); st.rerun()
+            st.divider()
+
+    # =========================================================
+    # PAINEL DISCENTE
+    # =========================================================
+    elif user_role == "discente":
+        st.subheader(f"🎓 Minha trajetória — {user.get('name','')}")
+        orientador_nome = user.get("orientador", "")
+        st.info(f"Orientador: **{orientador_nome or 'não informado'}**")
+        df_prod = read_df(SHEET_PROD)
+        df_vinc = read_df(SHEET_VINC)
+        orientador_username = ""
+        df_users = read_df(SHEET_USERS)
+        if not df_users.empty and orientador_nome:
+            m = df_users["name"].str.lower() == orientador_nome.lower()
+            if m.any(): orientador_username = df_users[m].iloc[0]["username"]
+        if orientador_username:
+            prods_ori = df_prod[df_prod["docente_username"] == orientador_username] if not df_prod.empty else pd.DataFrame()
+            if prods_ori.empty: st.info("Orientador sem produções.")
+            else:
+                st.markdown("### 📚 Produções do orientador")
+                meus_vinc = df_vinc[df_vinc["discente_username"] == user["username"]] if not df_vinc.empty else pd.DataFrame()
+                ja_participei = set() if meus_vinc.empty else set(meus_vinc["producao_id"].tolist())
+                for _, row in prods_ori.iterrows():
+                    pid = row["id"]; ja = pid in ja_participei
+                    with st.expander(f"{'✅' if ja else '⬜'} [{row['ano']}] {row['titulo']}"):
+                        st.write(f"**Tipo:** {row['tipo']} | **Veículo:** {row['veiculo']}")
+                        descricao_text = str(row.get('descricao', '')).strip()
+                        if descricao_text:
+                            st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{descricao_text}</div>', 
+                                       unsafe_allow_html=True)
+                        if ja: st.success("Você já registrou participação.")
+                        else:
+                            if st.button("Registrar participação", key=f"vinc_{pid}"):
+                                vinculo_submit(user["username"], orientador_username, pid)
+                                st.success("Registrado!"); st.rerun()
+        st.divider()
+        st.markdown("### 📋 Minhas participações")
+        if not df_vinc.empty:
+            mine = df_vinc[df_vinc["discente_username"] == user["username"]]
+            if not mine.empty:
+                linhas = []
+                for _, v in mine.iterrows():
+                    prod = df_prod[df_prod["id"] == v["producao_id"]] if not df_prod.empty else pd.DataFrame()
+                    if not prod.empty:
+                        p = prod.iloc[0]
+                        linhas.append({"Ano": p["ano"], "Tipo": p["tipo"], "Título": p["titulo"]})
+                if linhas: st.dataframe(pd.DataFrame(linhas), use_container_width=True)
+        else: st.info("Sem participações.")
