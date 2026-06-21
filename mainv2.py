@@ -231,7 +231,7 @@ def exibir_video_entrada():
     # ✅ Centraliza o vídeo usando colunas (1 parte | 4 partes | 1 parte)
     col_esq, col_video, col_dir = st.columns([1, 4, 1])
     
-    with col_video:      
+    with col_esq:      
         if video_file.exists():
             try:
                 video_bytes = video_file.read_bytes()
