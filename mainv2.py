@@ -242,7 +242,7 @@ def exibir_video_entrada():
                     Seu navegador não suporta o elemento de vídeo.
                 </video>
                 """
-                st.video(video_html)
+                st.video(video_file)
                 #st.markdown(video_html, unsafe_allow_html=True)
             except Exception as e:
                 st.warning(f"Erro ao carregar vídeo local: {e}")
