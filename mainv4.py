@@ -2,7 +2,7 @@
 # Streamlit + Google Sheets + E-mails
 # =========================================================
 
-import os, time, base64, uuid, hashlib, hmac, smtplib, re, io
+import os, time, base64, uuid, hashlib, hmac, smtplib, re, io, csv
 from email.message import EmailMessage
 from datetime import datetime
 from collections import Counter
@@ -509,8 +509,8 @@ SCOPUS_COLUMNS = {
 
 DOCENTES_BIBLIOMETRIA = {
     "Givago da Silva Souza": [
-        "GSouza.csv",
-        "scopus.csv",
+        "work/GSouza.csv",
+        "work/scopus.csv",
     ],
 }
 
@@ -549,34 +549,42 @@ def configurar_eixos_pretos(ax):
     for spine in ax.spines.values():
         spine.set_color("black")
 
-def grafico_evolucao_scopus(df):
-    por_ano = (
-        df[df["ano"] > 0]
-        .groupby("ano")
-        .agg(producoes=("titulo", "count"), citacoes=("citacoes", "sum"))
-        .sort_index()
-    )
-    if por_ano.empty:
+def grafico_evolucao_scopus(df, citacoes_anuais=None):
+    producoes_ano = df[df["ano"] > 0].groupby("ano").size().sort_index()
+    citacoes_anuais = citacoes_anuais if citacoes_anuais is not None else pd.Series(dtype=int)
+    
+    if producoes_ano.empty and citacoes_anuais.empty:
         return None
+    
+    anos = sorted(set(producoes_ano.index.astype(int).tolist()) | set(citacoes_anuais.index.astype(int).tolist()))
+    producoes = pd.Series(0, index=anos)
+    citacoes = pd.Series(0, index=anos)
+    
+    if not producoes_ano.empty:
+        producoes.loc[producoes_ano.index.astype(int)] = producoes_ano.astype(int).values
+    if not citacoes_anuais.empty:
+        citacoes.loc[citacoes_anuais.index.astype(int)] = citacoes_anuais.astype(int).values
     
     fig, ax1 = plt.subplots(figsize=(12, 5))
     ax2 = ax1.twinx()
     
-    ax1.bar(por_ano.index.astype(str), por_ano["producoes"], color="#4f7ccf", alpha=0.88, label="Produções")
+    eixo_x = [str(a) for a in anos]
+    ax1.bar(eixo_x, producoes.values, color="#4f7ccf", alpha=0.88, label="Produções")
     ax2.plot(
-        por_ano.index.astype(str),
-        por_ano["citacoes"],
+        eixo_x,
+        citacoes.values,
         color="#f28e2b",
         marker="o",
         linewidth=2.5,
-        label="Citações acumuladas"
+        label="Citações recebidas"
     )
     
     ax1.set_title("Evolução anual de produções e citações", fontsize=14, fontweight="bold", color="black")
-    ax1.set_xlabel("Ano de publicação", color="black")
+    ax1.set_xlabel("Ano", color="black")
     ax1.set_ylabel("Produções", color="black")
-    ax2.set_ylabel("Citações acumuladas", color="black")
+    ax2.set_ylabel("Citações recebidas no ano", color="black")
     ax1.grid(axis="y", alpha=0.25)
+    ax1.tick_params(axis="x", rotation=45)
     
     configurar_eixos_pretos(ax1)
     configurar_eixos_pretos(ax2)
@@ -633,6 +641,59 @@ def extrair_metricas_relatorio_autor(texto):
         metricas["Documentos considerados no h-index"] = int(documentos_h.group(1))
     
     return metricas
+
+def extrair_citacoes_relatorio_scopus(texto):
+    rows = list(csv.reader(io.StringIO(texto)))
+    header_idx = None
+    for i, row in enumerate(rows):
+        if len(row) > 7 and row[0].strip().lower() == "publication year" and row[1].strip().lower() == "document title":
+            header_idx = i
+            break
+    
+    if header_idx is None or header_idx == 0:
+        return pd.Series(dtype=int)
+    
+    header = rows[header_idx - 1]
+    resumo = rows[header_idx]
+    citacoes_por_ano = {}
+    
+    for idx, label in enumerate(header):
+        label = str(label).strip()
+        if not re.fullmatch(r"\d{4}", label):
+            continue
+        if idx >= len(resumo):
+            continue
+        valor = pd.to_numeric(str(resumo[idx]).strip(), errors="coerce")
+        if pd.notna(valor):
+            citacoes_por_ano[int(label)] = int(valor)
+    
+    if not citacoes_por_ano:
+        return pd.Series(dtype=int)
+    
+    return pd.Series(citacoes_por_ano, name="citacoes").sort_index()
+
+def obter_citacoes_anuais_de_relatorios(arquivos):
+    series = []
+    for arquivo in arquivos:
+        try:
+            arquivo.seek(0)
+            texto = arquivo.getvalue().decode("utf-8-sig", errors="ignore")
+            s = extrair_citacoes_relatorio_scopus(texto)
+            if not s.empty:
+                series.append(s)
+        except Exception:
+            continue
+    
+    for arquivo in arquivos:
+        try:
+            arquivo.seek(0)
+        except Exception:
+            pass
+    
+    if not series:
+        return pd.Series(dtype=int)
+    
+    return pd.concat(series, axis=1).fillna(0).sum(axis=1).astype(int).sort_index()
 
 def ler_csv_bibliometrico(uploaded_file):
     raw = uploaded_file.getvalue()
@@ -744,6 +805,7 @@ def render_bibliometria_docente():
         return
     
     try:
+        citacoes_anuais_relatorio = obter_citacoes_anuais_de_relatorios(arquivos)
         df_biblio, metricas_relatorio = consolidar_arquivos_bibliometricos(arquivos)
     except Exception as e:
         st.error(f"Não foi possível ler os arquivos associados: {e}")
@@ -774,7 +836,8 @@ def render_bibliometria_docente():
     
     df_quadrienio = df_biblio[df_biblio["ano"].astype(str).isin(ANOS)]
     total_docs = len(df_filtrado)
-    total_citacoes = int(df_filtrado["citacoes"].sum()) if total_docs else 0
+    citacoes_usam_relatorio = not citacoes_anuais_relatorio.empty
+    total_citacoes = int(citacoes_anuais_relatorio.sum()) if citacoes_usam_relatorio else (int(df_filtrado["citacoes"].sum()) if total_docs else 0)
     h_index_calculado = calcular_h_index(df_filtrado["citacoes"]) if total_docs else 0
     media_citacoes = (total_citacoes / total_docs) if total_docs else 0
     docs_quadrienio = len(df_quadrienio)
@@ -785,8 +848,8 @@ def render_bibliometria_docente():
     
     st.markdown(f"### {docente_nome}")
     st.caption(
-        "Painel de visualização da produtividade do docente. As citações por ano representam "
-        "o total acumulado de citações dos documentos publicados em cada ano, conforme o CSV exportado da Scopus."
+        "Painel de visualização da produtividade do docente. Quando houver relatório do tipo GSouza.csv, "
+        "a evolução das citações usa as citações recebidas em cada ano desse relatório; a produção anual usa a exportação de documentos da Scopus."
     )
     
     c1, c2, c3, c4, c5, c6 = st.columns(6)
@@ -796,6 +859,11 @@ def render_bibliometria_docente():
     with c4: render_metric_card(f"{media_citacoes:.1f}", "Citações/doc.", "metric-card-orange")
     with c5: render_metric_card(docs_quadrienio, "Docs. 2025-2028", "metric-card-pink")
     with c6: render_metric_card(f"{taxa_oa:.0f}%", "Open Access", "metric-card-blue")
+    
+    if citacoes_usam_relatorio:
+        st.success("Fonte das citações anuais: relatório de citações da Scopus associado ao docente.")
+    else:
+        st.warning("Relatório anual de citações não encontrado; usando a coluna 'Cited by' da exportação de documentos como alternativa.")
     
     if metricas_relatorio:
         linhas = []
@@ -807,7 +875,7 @@ def render_bibliometria_docente():
     
     st.divider()
     st.markdown("### Evolução no estilo Scopus")
-    fig_evolucao = grafico_evolucao_scopus(df_filtrado)
+    fig_evolucao = grafico_evolucao_scopus(df_filtrado, citacoes_anuais_relatorio)
     if fig_evolucao:
         st.pyplot(fig_evolucao)
         plt.close(fig_evolucao)
