@@ -509,8 +509,8 @@ SCOPUS_COLUMNS = {
 
 DOCENTES_BIBLIOMETRIA = {
     "Givago da Silva Souza": [
-        "GSouza.csv",
-        "scopus.csv",
+        "work/GSouza.csv",
+        "work/scopus.csv",
     ],
 }
 
@@ -865,14 +865,6 @@ def render_bibliometria_docente():
     else:
         st.warning("Relatório anual de citações não encontrado; usando a coluna 'Cited by' da exportação de documentos como alternativa.")
     
-    if metricas_relatorio:
-        linhas = []
-        for arquivo, metricas in metricas_relatorio.items():
-            for indicador, valor in metricas.items():
-                linhas.append({"arquivo": arquivo, "indicador": indicador, "valor": valor})
-        if linhas:
-            st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
-    
     st.divider()
     st.markdown("### Evolução no estilo Scopus")
     fig_evolucao = grafico_evolucao_scopus(df_filtrado, citacoes_anuais_relatorio)
@@ -883,19 +875,11 @@ def render_bibliometria_docente():
         st.info("Não há anos válidos para gerar a evolução bibliométrica.")
     
     st.divider()
-    col_g1, col_g2 = st.columns(2)
-    with col_g1:
-        top_periodicos = df_filtrado["periodico"].replace("", "Não informado").value_counts().head(10)
-        fig_periodicos = grafico_barras_horizontal(top_periodicos, "Top 10 periódicos", "Documentos")
-        if fig_periodicos:
-            st.pyplot(fig_periodicos)
-            plt.close(fig_periodicos)
-    with col_g2:
-        tipos = df_filtrado["tipo_documento"].replace("", "Não informado").value_counts()
-        fig_tipos = grafico_barras_horizontal(tipos, "Tipos de documento", "Documentos")
-        if fig_tipos:
-            st.pyplot(fig_tipos)
-            plt.close(fig_tipos)
+    top_periodicos = df_filtrado["periodico"].replace("", "Não informado").value_counts().head(10)
+    fig_periodicos = grafico_barras_horizontal(top_periodicos, "Top 10 periódicos", "Documentos")
+    if fig_periodicos:
+        st.pyplot(fig_periodicos)
+        plt.close(fig_periodicos)
     
     texto_cloud = texto_bibliometrico_para_wordcloud(df_filtrado)
     if texto_cloud:
