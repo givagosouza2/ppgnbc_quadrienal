@@ -2,7 +2,7 @@
 # Streamlit + Google Sheets + E-mails
 # =========================================================
 
-import os, time, base64, uuid, hashlib, hmac, smtplib, re
+import os, time, base64, uuid, hashlib, hmac, smtplib, re, io
 from email.message import EmailMessage
 from datetime import datetime
 from collections import Counter
@@ -507,6 +507,105 @@ SCOPUS_COLUMNS = {
     "EID": "eid",
 }
 
+DOCENTES_BIBLIOMETRIA = {
+    "Givago da Silva Souza": [
+        "work/GSouza.csv",
+        "work/scopus.csv",
+    ],
+}
+
+class LocalCsvFile(io.BytesIO):
+    def __init__(self, path):
+        self.path = Path(path)
+        super().__init__(self.path.read_bytes())
+        self.name = self.path.name
+
+def resolver_caminho_bibliometrico(caminho):
+    caminho = Path(caminho)
+    candidatos = [
+        caminho,
+        Path.cwd() / caminho,
+        Path(__file__).resolve().parent / caminho,
+        Path(__file__).resolve().parent.parent / caminho,
+    ]
+    for candidato in candidatos:
+        if candidato.exists():
+            return candidato
+    return None
+
+def carregar_arquivos_docente_bibliometria(nome_docente):
+    arquivos = []
+    for caminho in DOCENTES_BIBLIOMETRIA.get(nome_docente, []):
+        encontrado = resolver_caminho_bibliometrico(caminho)
+        if encontrado:
+            arquivos.append(LocalCsvFile(encontrado))
+    return arquivos
+
+def configurar_eixos_pretos(ax):
+    ax.tick_params(axis="both", colors="black", labelsize=10)
+    ax.xaxis.label.set_color("black")
+    ax.yaxis.label.set_color("black")
+    ax.title.set_color("black")
+    for spine in ax.spines.values():
+        spine.set_color("black")
+
+def grafico_evolucao_scopus(df):
+    por_ano = (
+        df[df["ano"] > 0]
+        .groupby("ano")
+        .agg(producoes=("titulo", "count"), citacoes=("citacoes", "sum"))
+        .sort_index()
+    )
+    if por_ano.empty:
+        return None
+    
+    fig, ax1 = plt.subplots(figsize=(12, 5))
+    ax2 = ax1.twinx()
+    
+    ax1.bar(por_ano.index.astype(str), por_ano["producoes"], color="#4f7ccf", alpha=0.88, label="Produções")
+    ax2.plot(
+        por_ano.index.astype(str),
+        por_ano["citacoes"],
+        color="#f28e2b",
+        marker="o",
+        linewidth=2.5,
+        label="Citações acumuladas"
+    )
+    
+    ax1.set_title("Evolução anual de produções e citações", fontsize=14, fontweight="bold", color="black")
+    ax1.set_xlabel("Ano de publicação", color="black")
+    ax1.set_ylabel("Produções", color="black")
+    ax2.set_ylabel("Citações acumuladas", color="black")
+    ax1.grid(axis="y", alpha=0.25)
+    
+    configurar_eixos_pretos(ax1)
+    configurar_eixos_pretos(ax2)
+    ax2.tick_params(axis="y", colors="black", labelsize=10)
+    
+    linhas1, labels1 = ax1.get_legend_handles_labels()
+    linhas2, labels2 = ax2.get_legend_handles_labels()
+    legenda = ax1.legend(linhas1 + linhas2, labels1 + labels2, loc="upper left", frameon=False)
+    for texto in legenda.get_texts():
+        texto.set_color("black")
+    
+    fig.tight_layout()
+    return fig
+
+def grafico_barras_horizontal(series, titulo, xlabel):
+    dados = series.dropna()
+    if dados.empty:
+        return None
+    dados = dados.sort_values(ascending=True)
+    
+    fig, ax = plt.subplots(figsize=(10, max(4, len(dados) * 0.42)))
+    ax.barh(dados.index.astype(str), dados.values, color="#4f7ccf", alpha=0.9)
+    ax.set_title(titulo, fontsize=13, fontweight="bold", color="black")
+    ax.set_xlabel(xlabel, color="black")
+    ax.grid(axis="x", alpha=0.25)
+    configurar_eixos_pretos(ax)
+    fig.tight_layout()
+    return fig
+
 def _safe_int_series(series):
     return pd.to_numeric(series, errors="coerce").fillna(0).astype(int)
 
@@ -615,34 +714,43 @@ def render_metric_card(valor, rotulo, classe="metric-card"):
     </div>""", unsafe_allow_html=True)
 
 def render_bibliometria_docente():
-    st.subheader("📈 Avaliação Bibliométrica do Docente")
+    st.subheader("📈 Produtividade bibliométrica do docente")
     
-    col_docente, col_periodo = st.columns([2, 1])
-    with col_docente:
-        docente_nome = st.text_input("Docente avaliado", placeholder="Ex.: Givago Silva Souza", key="biblio_docente")
-    with col_periodo:
-        periodo_quadrienio = st.multiselect("Quadriênio CAPES", ANOS, default=ANOS, key="biblio_quad")
+    docentes = list(DOCENTES_BIBLIOMETRIA.keys())
+    docente_nome = st.selectbox("Docente", docentes, key="biblio_docente_select")
+    arquivos = carregar_arquivos_docente_bibliometria(docente_nome)
     
-    arquivos = st.file_uploader(
-        "Arquivos bibliométricos (.csv)",
-        type=["csv"],
-        accept_multiple_files=True,
-        key="biblio_upload",
-        help="Envie a exportação de documentos da Scopus e, se desejar, o relatório de autor com h-index."
-    )
+    with st.expander("📎 Arquivos associados", expanded=True):
+        if arquivos:
+            st.write(f"**{docente_nome}**")
+            st.caption("Arquivos carregados automaticamente para este docente:")
+            for arquivo in arquivos:
+                st.write(f"• {arquivo.name}")
+        else:
+            st.warning("Nenhum arquivo associado foi encontrado para este docente.")
+        
+        arquivos_extra = st.file_uploader(
+            "Adicionar CSVs temporários para visualização",
+            type=["csv"],
+            accept_multiple_files=True,
+            key="biblio_upload_extra",
+            help="Use apenas para testes. Para deixar permanente, adicione o caminho no dicionário DOCENTES_BIBLIOMETRIA."
+        )
+        if arquivos_extra:
+            arquivos.extend(arquivos_extra)
     
     if not arquivos:
-        st.info("Envie um ou mais arquivos CSV para iniciar a avaliação bibliométrica.")
+        st.info("Associe arquivos CSV da Scopus ao docente para visualizar a produtividade bibliométrica.")
         return
     
     try:
         df_biblio, metricas_relatorio = consolidar_arquivos_bibliometricos(arquivos)
     except Exception as e:
-        st.error(f"Não foi possível ler os arquivos enviados: {e}")
+        st.error(f"Não foi possível ler os arquivos associados: {e}")
         return
     
     if df_biblio.empty:
-        st.warning("Os arquivos enviados não contêm uma tabela de documentos reconhecida.")
+        st.warning("Os arquivos associados não contêm uma tabela de documentos reconhecida.")
         if metricas_relatorio:
             st.write("Indicadores extraídos:")
             st.json(metricas_relatorio)
@@ -650,26 +758,21 @@ def render_bibliometria_docente():
     
     anos_disponiveis = sorted([int(a) for a in df_biblio["ano"].dropna().unique() if int(a) > 0], reverse=True)
     tipos_disponiveis = sorted([t for t in df_biblio["tipo_documento"].dropna().unique() if str(t).strip()])
-    periodicos_disponiveis = sorted([p for p in df_biblio["periodico"].dropna().unique() if str(p).strip()])
     
-    with st.expander("🔎 Filtros avançados", expanded=False):
-        col1, col2, col3 = st.columns(3)
+    with st.expander("🔎 Filtros de visualização", expanded=False):
+        col1, col2 = st.columns(2)
         with col1:
-            filtro_anos = st.multiselect("Ano", anos_disponiveis, default=anos_disponiveis, key="biblio_f_anos")
+            filtro_anos = st.multiselect("Ano de publicação", anos_disponiveis, default=anos_disponiveis, key="biblio_f_anos")
         with col2:
             filtro_tipos = st.multiselect("Tipo de documento", tipos_disponiveis, key="biblio_f_tipos")
-        with col3:
-            filtro_periodicos = st.multiselect("Periódico", periodicos_disponiveis, key="biblio_f_periodicos")
     
     df_filtrado = df_biblio.copy()
     if filtro_anos:
         df_filtrado = df_filtrado[df_filtrado["ano"].isin(filtro_anos)]
     if filtro_tipos:
         df_filtrado = df_filtrado[df_filtrado["tipo_documento"].isin(filtro_tipos)]
-    if filtro_periodicos:
-        df_filtrado = df_filtrado[df_filtrado["periodico"].isin(filtro_periodicos)]
     
-    df_quadrienio = df_biblio[df_biblio["ano"].astype(str).isin(periodo_quadrienio)] if periodo_quadrienio else pd.DataFrame()
+    df_quadrienio = df_biblio[df_biblio["ano"].astype(str).isin(ANOS)]
     total_docs = len(df_filtrado)
     total_citacoes = int(df_filtrado["citacoes"].sum()) if total_docs else 0
     h_index_calculado = calcular_h_index(df_filtrado["citacoes"]) if total_docs else 0
@@ -680,7 +783,12 @@ def render_bibliometria_docente():
         if total_docs else 0
     )
     
-    st.markdown("### Indicadores principais")
+    st.markdown(f"### {docente_nome}")
+    st.caption(
+        "Painel de visualização da produtividade do docente. As citações por ano representam "
+        "o total acumulado de citações dos documentos publicados em cada ano, conforme o CSV exportado da Scopus."
+    )
+    
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1: render_metric_card(total_docs, "Documentos")
     with c2: render_metric_card(total_citacoes, "Citações", "metric-card-blue")
@@ -690,30 +798,36 @@ def render_bibliometria_docente():
     with c6: render_metric_card(f"{taxa_oa:.0f}%", "Open Access", "metric-card-blue")
     
     if metricas_relatorio:
-        with st.expander("📌 Indicadores extraídos de relatório de autor", expanded=True):
-            linhas = []
-            for arquivo, metricas in metricas_relatorio.items():
-                for indicador, valor in metricas.items():
-                    linhas.append({"arquivo": arquivo, "indicador": indicador, "valor": valor})
+        linhas = []
+        for arquivo, metricas in metricas_relatorio.items():
+            for indicador, valor in metricas.items():
+                linhas.append({"arquivo": arquivo, "indicador": indicador, "valor": valor})
+        if linhas:
             st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
     
     st.divider()
-    st.markdown("### Evolução e impacto")
+    st.markdown("### Evolução no estilo Scopus")
+    fig_evolucao = grafico_evolucao_scopus(df_filtrado)
+    if fig_evolucao:
+        st.pyplot(fig_evolucao)
+        plt.close(fig_evolucao)
+    else:
+        st.info("Não há anos válidos para gerar a evolução bibliométrica.")
+    
+    st.divider()
     col_g1, col_g2 = st.columns(2)
     with col_g1:
-        st.caption("Documentos por ano")
-        st.bar_chart(df_filtrado.groupby("ano").size().sort_index())
+        top_periodicos = df_filtrado["periodico"].replace("", "Não informado").value_counts().head(10)
+        fig_periodicos = grafico_barras_horizontal(top_periodicos, "Top 10 periódicos", "Documentos")
+        if fig_periodicos:
+            st.pyplot(fig_periodicos)
+            plt.close(fig_periodicos)
     with col_g2:
-        st.caption("Citações acumuladas por ano de publicação")
-        st.line_chart(df_filtrado.groupby("ano")["citacoes"].sum().sort_index())
-    
-    col_g3, col_g4 = st.columns(2)
-    with col_g3:
-        st.caption("Top 10 periódicos mais frequentes")
-        st.bar_chart(df_filtrado["periodico"].replace("", "Não informado").value_counts().head(10))
-    with col_g4:
-        st.caption("Tipos de documento")
-        st.bar_chart(df_filtrado["tipo_documento"].replace("", "Não informado").value_counts())
+        tipos = df_filtrado["tipo_documento"].replace("", "Não informado").value_counts()
+        fig_tipos = grafico_barras_horizontal(tipos, "Tipos de documento", "Documentos")
+        if fig_tipos:
+            st.pyplot(fig_tipos)
+            plt.close(fig_tipos)
     
     texto_cloud = texto_bibliometrico_para_wordcloud(df_filtrado)
     if texto_cloud:
@@ -722,9 +836,10 @@ def render_bibliometria_docente():
         fig = gerar_wordcloud(texto_cloud, max_words=120)
         if fig:
             st.pyplot(fig)
+            plt.close(fig)
     
     st.divider()
-    st.markdown("### 📄 Documentos")
+    st.markdown("### Documentos do docente")
     termo = st.text_input("Buscar em título, autores, periódico ou DOI", key="biblio_busca")
     if termo:
         termo_norm = termo.lower().strip()
@@ -739,15 +854,6 @@ def render_bibliometria_docente():
     colunas_tabela = ["ano", "titulo", "periodico", "citacoes", "tipo_documento", "doi", "autores"]
     df_tabela = df_filtrado[colunas_tabela].sort_values(["ano", "citacoes"], ascending=[False, False])
     st.dataframe(df_tabela, use_container_width=True, hide_index=True)
-    
-    nome_base = re.sub(r"[^a-zA-Z0-9_-]+", "_", docente_nome.strip() or "docente").strip("_").lower()
-    st.download_button(
-        "⬇️ Baixar tabela filtrada",
-        data=df_tabela.to_csv(index=False).encode("utf-8-sig"),
-        file_name=f"bibliometria_{nome_base}.csv",
-        mime="text/csv",
-        use_container_width=True
-    )
 
 # ---------------------------------------------------------
 # FUNÇÕES DE CO-AUTORIA
