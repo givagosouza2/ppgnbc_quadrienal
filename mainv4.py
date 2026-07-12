@@ -1,6 +1,6 @@
 # app.py — Sistema de Monitoramento de Produção do PPG (v6.9 - Vídeo Centralizado)
 # Streamlit + Google Sheets + E-mails
-# =============================================F============
+# =========================================================
 
 import os, time, base64, uuid, hashlib, hmac, smtplib, re, io, csv
 from email.message import EmailMessage
@@ -509,8 +509,8 @@ SCOPUS_COLUMNS = {
 
 DOCENTES_BIBLIOMETRIA = {
     "Givago da Silva Souza": [
-        "GSouza.csv",
-        "scopus.csv",
+        "work/GSouza.csv",
+        "work/scopus.csv",
     ],
 }
 
@@ -781,7 +781,24 @@ def render_bibliometria_docente():
     docente_nome = st.selectbox("Docente", docentes, key="biblio_docente_select")
     arquivos = carregar_arquivos_docente_bibliometria(docente_nome)
     
-    
+    with st.expander("📎 Arquivos associados", expanded=True):
+        if arquivos:
+            st.write(f"**{docente_nome}**")
+            st.caption("Arquivos carregados automaticamente para este docente:")
+            for arquivo in arquivos:
+                st.write(f"• {arquivo.name}")
+        else:
+            st.warning("Nenhum arquivo associado foi encontrado para este docente.")
+        
+        arquivos_extra = st.file_uploader(
+            "Adicionar CSVs temporários para visualização",
+            type=["csv"],
+            accept_multiple_files=True,
+            key="biblio_upload_extra",
+            help="Use apenas para testes. Para deixar permanente, adicione o caminho no dicionário DOCENTES_BIBLIOMETRIA."
+        )
+        if arquivos_extra:
+            arquivos.extend(arquivos_extra)
     
     if not arquivos:
         st.info("Associe arquivos CSV da Scopus ao docente para visualizar a produtividade bibliométrica.")
@@ -803,7 +820,7 @@ def render_bibliometria_docente():
     
     anos_disponiveis = sorted([int(a) for a in df_biblio["ano"].dropna().unique() if int(a) > 0], reverse=True)
     tipos_disponiveis = sorted([t for t in df_biblio["tipo_documento"].dropna().unique() if str(t).strip()])
-
+    
     with st.expander("🔎 Filtros de visualização", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
@@ -828,7 +845,6 @@ def render_bibliometria_docente():
         df_filtrado["acesso_aberto"].astype(str).str.strip().ne("").mean() * 100
         if total_docs else 0
     )
-
     
     st.markdown(f"### {docente_nome}")
     st.caption(
@@ -836,13 +852,13 @@ def render_bibliometria_docente():
         "a evolução das citações usa as citações recebidas em cada ano desse relatório; a produção anual usa a exportação de documentos da Scopus."
     )
     
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1: render_metric_card(total_docs, "Documentos")
     with c2: render_metric_card(total_citacoes, "Citações", "metric-card-blue")
     with c3: render_metric_card(h_index_calculado, "h-index calculado", "metric-card-green")
     with c4: render_metric_card(f"{media_citacoes:.1f}", "Citações/doc.", "metric-card-orange")
     with c5: render_metric_card(docs_quadrienio, "Docs. 2025-2028", "metric-card-pink")
-    
+    with c6: render_metric_card(f"{taxa_oa:.0f}%", "Open Access", "metric-card-blue")
     
     if citacoes_usam_relatorio:
         st.success("Fonte das citações anuais: relatório de citações da Scopus associado ao docente.")
