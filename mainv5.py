@@ -763,7 +763,7 @@ def render_bibliometria_docente():
     docente_nome = st.selectbox("Docente", docentes, key="biblio_docente_select")
     arquivos = carregar_arquivos_docente_bibliometria(docente_nome)
     
-    with st.expander("📎 Arquivos associados", expanded=True):
+    with st.expander("📎 Arquivos ", expanded=False):
         if arquivos:
             st.write(f"**{docente_nome}**")
             st.caption("Arquivos carregados automaticamente para este docente:")
