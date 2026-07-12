@@ -772,15 +772,15 @@ def render_bibliometria_docente():
         else:
             st.warning("Nenhum arquivo associado foi encontrado para este docente.")
         
-        arquivos_extra = st.file_uploader(
-            "Adicionar CSVs temporários para visualização",
-            type=["csv"],
-            accept_multiple_files=True,
-            key="biblio_upload_extra",
-            help="Use apenas para testes. Para deixar permanente, adicione o caminho no dicionário DOCENTES_BIBLIOMETRIA."
-        )
-        if arquivos_extra:
-            arquivos.extend(arquivos_extra)
+        #arquivos_extra = st.file_uploader(
+        #    "Adicionar CSVs temporários para visualização",
+        #    type=["csv"],
+        #    accept_multiple_files=True,
+        #    key="biblio_upload_extra",
+        #    help="Use apenas para testes. Para deixar permanente, adicione o caminho no dicionário DOCENTES_BIBLIOMETRIA."
+        #)
+        #if arquivos_extra:
+        #    arquivos.extend(arquivos_extra)
     
     if not arquivos:
         st.info("Associe arquivos CSV da Scopus ao docente para visualizar a produtividade bibliométrica.")
