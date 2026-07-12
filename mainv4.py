@@ -803,19 +803,7 @@ def render_bibliometria_docente():
     
     anos_disponiveis = sorted([int(a) for a in df_biblio["ano"].dropna().unique() if int(a) > 0], reverse=True)
     tipos_disponiveis = sorted([t for t in df_biblio["tipo_documento"].dropna().unique() if str(t).strip()])
-    
-    df_quadrienio = df_biblio[df_biblio["ano"].astype(str).isin(ANOS)]
-    total_docs = len(df_filtrado)
-    citacoes_usam_relatorio = not citacoes_anuais_relatorio.empty
-    total_citacoes = int(citacoes_anuais_relatorio.sum()) if citacoes_usam_relatorio else (int(df_filtrado["citacoes"].sum()) if total_docs else 0)
-    h_index_calculado = calcular_h_index(df_filtrado["citacoes"]) if total_docs else 0
-    media_citacoes = (total_citacoes / total_docs) if total_docs else 0
-    docs_quadrienio = len(df_quadrienio)
-    taxa_oa = (
-        df_filtrado["acesso_aberto"].astype(str).str.strip().ne("").mean() * 100
-        if total_docs else 0
-    )
-    
+        
     st.markdown(f"### {docente_nome}")
     st.caption(
         "Painel de visualização da produtividade do docente. Quando houver relatório do tipo GSouza.csv, "
