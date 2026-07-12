@@ -804,19 +804,6 @@ def render_bibliometria_docente():
     anos_disponiveis = sorted([int(a) for a in df_biblio["ano"].dropna().unique() if int(a) > 0], reverse=True)
     tipos_disponiveis = sorted([t for t in df_biblio["tipo_documento"].dropna().unique() if str(t).strip()])
     
-    with st.expander("🔎 Filtros de visualização", expanded=False):
-        col1, col2 = st.columns(2)
-        with col1:
-            filtro_anos = st.multiselect("Ano de publicação", anos_disponiveis, default=anos_disponiveis, key="biblio_f_anos")
-        with col2:
-            filtro_tipos = st.multiselect("Tipo de documento", tipos_disponiveis, key="biblio_f_tipos")
-    
-    df_filtrado = df_biblio.copy()
-    if filtro_anos:
-        df_filtrado = df_filtrado[df_filtrado["ano"].isin(filtro_anos)]
-    if filtro_tipos:
-        df_filtrado = df_filtrado[df_filtrado["tipo_documento"].isin(filtro_tipos)]
-    
     df_quadrienio = df_biblio[df_biblio["ano"].astype(str).isin(ANOS)]
     total_docs = len(df_filtrado)
     citacoes_usam_relatorio = not citacoes_anuais_relatorio.empty
