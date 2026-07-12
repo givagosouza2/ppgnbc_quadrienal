@@ -490,7 +490,10 @@ SCOPUS_COLUMNS = {
 }
 
 DOCENTES_BIBLIOMETRIA = {
-    "Givago da Silva Souza": [
+    "Anderson Manoel Herculano Oliveira da Silva": [
+        "AHerculano_CV.csv",
+        "AHerculano_scopus.csv",
+    ]"Givago da Silva Souza": [
         "GSouza_CV.csv",
         "GSouza_scopus.csv",
     ],
