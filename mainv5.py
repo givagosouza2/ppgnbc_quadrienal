@@ -766,7 +766,7 @@ def render_bibliometria_docente():
     with st.expander("📎 Arquivos associados", expanded=True):
         if arquivos:
             st.write(f"**{docente_nome}**")
-           st.caption("Arquivos carregados automaticamente para este docente:")
+            st.caption("Arquivos carregados automaticamente para este docente:")
             for arquivo in arquivos:
                 st.write(f"• {arquivo.name}")
         else:
