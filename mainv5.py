@@ -510,9 +510,81 @@ DOCENTES_BIBLIOMETRIA = {
         "BCallegari_CV.csv",
         "BCallegari_scopus.csv",
     ],
+    "Bruno Duarte Gomes": [
+        "BGomes_CV.csv",
+        "BGomes_scopus.csv",
+    ],
+    "Carlomagno Pacheco Bahia": [
+        "CBahia_CV.csv",
+        "CBahia_scopus.csv",
+    ],
+    "Cláudio Guedes Salgado": [
+        "CSalgado_CV.csv",
+        "CSalgado_scopus.csv",
+    ],
+    "Cleusa Yoshiko Nagamachi": [
+        "CNagamachi_CV.csv",
+        "CNagamachi_scopus.csv",
+    ],
+    "Cristovam Wanderley Picanço Diniz": [
+        "CDiniz_CV.csv",
+        "CDiniz_scopus.csv",
+    ],
+    "Edilene Oliveira da Silva": [
+        "ESilva_CV.csv",
+        "ESilva_scopus.csv",
+    ],
+    "Evander de Jesus Oliveira Batista": [
+        "EBatista_CV.csv",
+        "EBatista_scopus.csv",
+    ],
+    "Fernando Allan de Farias Rocha": [
+        "FRocha_CV.csv",
+        "FRocha_scopus.csv",
+    ],
+    "Gilmara de Nazareth Tavares Bastos": [
+        "GBastos_CV.csv",
+        "GBastos_scopus.csv",
+    ],
     "Givago da Silva Souza": [
         "GSouza_CV.csv",
         "GSouza_scopus.csv",
+    ],
+    "José Luiz Martins do Nascimento": [
+        "JNascimento_CV.csv",
+        "JNascimento_scopus.csv",
+    ],
+    "Juliana Silva Cassoli": [
+        "JCassoli_CV.csv",
+        "JCassoli_scopus.csv",
+    ],
+    "Júlio César Pieczarka": [
+        "JPieczarka_CV.csv",
+        "JPieczarka_scopus.csv",
+    ],
+    "Karen Renata Herculano Matos Oliveira": [
+        "KOliveira_CV.csv",
+        "KOliveira_scopus.csv",
+    ],
+    "Manoel da Silva Filho": [
+        "MFilho_CV.csv",
+        "MFilho_scopus.csv",
+    ],
+    "Márcia Consentino Kronka Sosthenes": [
+        "MSosthenes.csv",
+        "MSosthenes_scopus.csv",
+    ],
+    "Marta Chagas Monteiro": [
+        "MMonteiro.csv",
+        "MMonteiro_scopus.csv",
+    ],
+    "Renata Coelho Rodrigues Noronha": [
+        "RNoronha.csv",
+        "RNoronha_scopus.csv",
+    ],
+    "Rommel Mario Rodriguez Burbano": [
+        "RBurbano.csv",
+        "RBurbano_scopus.csv",
     ],
     
 }
