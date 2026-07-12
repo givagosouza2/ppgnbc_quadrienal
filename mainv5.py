@@ -491,8 +491,8 @@ SCOPUS_COLUMNS = {
 
 DOCENTES_BIBLIOMETRIA = {
     "Givago da Silva Souza": [
-        "work/GSouza.csv",
-        "work/scopus.csv",
+        "GSouza.csv",
+        "scopus.csv",
     ],
 }
 
