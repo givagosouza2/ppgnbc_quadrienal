@@ -507,7 +507,7 @@ DOCENTES_BIBLIOMETRIA = {
         "BBorges_scopus.csv",
     ],
     "Bianca Callegari": [
-        "BCallegai_CV.csv",
+        "BCallegari_CV.csv",
         "BCallegari_scopus.csv",
     ],
     "Givago da Silva Souza": [
