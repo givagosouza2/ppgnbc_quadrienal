@@ -834,13 +834,13 @@ def render_bibliometria_docente():
         "a evolução das citações usa as citações recebidas em cada ano desse relatório; a produção anual usa a exportação de documentos da Scopus."
     )
     
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1: render_metric_card(total_docs, "Documentos")
     with c2: render_metric_card(total_citacoes, "Citações", "metric-card-blue")
     with c3: render_metric_card(h_index_calculado, "h-index calculado", "metric-card-green")
     with c4: render_metric_card(f"{media_citacoes:.1f}", "Citações/doc.", "metric-card-orange")
     with c5: render_metric_card(docs_quadrienio, "Docs. 2025-2028", "metric-card-pink")
-    with c6: render_metric_card(f"{taxa_oa:.0f}%", "Open Access", "metric-card-blue")
+    #with c6: render_metric_card(f"{taxa_oa:.0f}%", "Open Access", "metric-card-blue")
     
     if citacoes_usam_relatorio:
         st.success("Fonte das citações anuais: relatório de citações da Scopus associado ao docente.")
