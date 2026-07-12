@@ -490,14 +490,31 @@ SCOPUS_COLUMNS = {
 }
 
 DOCENTES_BIBLIOMETRIA = {
+    "Amauri Gouveia Júnior": [
+        "AGouveiaJr_CV.csv",
+        "AGouveiaJr_scopus.csv",
+    ],
     "Anderson Manoel Herculano Oliveira da Silva": [
         "AHerculano_CV.csv",
         "AHerculano_scopus.csv",
+    ],
+    "Antônio Pereira Júnior": [
+        "APereiraJr_CV.csv",
+        "APereiraJr_scopus.csv",
+    ],
+    "Bárbara do Nascimento Borges": [
+        "BBorges_CV.csv",
+        "BBorges_scopus.csv",
+    ],
+    "Bianca Callegari": [
+        "BCallegai_CV.csv",
+        "BCallegari_scopus.csv",
     ],
     "Givago da Silva Souza": [
         "GSouza_CV.csv",
         "GSouza_scopus.csv",
     ],
+    
 }
 
 class LocalCsvFile(io.BytesIO):
