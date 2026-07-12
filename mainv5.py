@@ -571,19 +571,19 @@ DOCENTES_BIBLIOMETRIA = {
         "MFilho_scopus.csv",
     ],
     "Márcia Consentino Kronka Sosthenes": [
-        "MSosthenes.csv",
+        "MSosthenes_CV.csv",
         "MSosthenes_scopus.csv",
     ],
     "Marta Chagas Monteiro": [
-        "MMonteiro.csv",
+        "MMonteiro_CV.csv",
         "MMonteiro_scopus.csv",
     ],
     "Renata Coelho Rodrigues Noronha": [
-        "RNoronha.csv",
+        "RNoronha_CV.csv",
         "RNoronha_scopus.csv",
     ],
     "Rommel Mario Rodriguez Burbano": [
-        "RBurbano.csv",
+        "RBurbano_CV.csv",
         "RBurbano_scopus.csv",
     ],
     
