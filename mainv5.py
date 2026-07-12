@@ -730,6 +730,7 @@ def ler_csv_bibliometrico(uploaded_file):
     df["ano"] = _safe_int_series(df["ano"])
     df["citacoes"] = _safe_int_series(df["citacoes"])
     df["arquivo_origem"] = uploaded_file.name
+    df["modelo_origem"] = "documentos_scopus"
     
     return df, metricas_relatorio
 
@@ -821,8 +822,13 @@ def render_bibliometria_docente():
             st.json(metricas_relatorio)
         return
     
-    anos_disponiveis = sorted([int(a) for a in df_biblio["ano"].dropna().unique() if int(a) > 0], reverse=True)
-    tipos_disponiveis = sorted([t for t in df_biblio["tipo_documento"].dropna().unique() if str(t).strip()])
+    df_documentos_scopus = df_biblio[df_biblio["modelo_origem"] == "documentos_scopus"].copy()
+    if df_documentos_scopus.empty:
+        st.warning("Nenhum arquivo no modelo scopus.csv foi encontrado para calcular a produção documental.")
+        return
+    
+    anos_disponiveis = sorted([int(a) for a in df_documentos_scopus["ano"].dropna().unique() if int(a) > 0], reverse=True)
+    tipos_disponiveis = sorted([t for t in df_documentos_scopus["tipo_documento"].dropna().unique() if str(t).strip()])
     
     with st.expander("🔎 Filtros de visualização", expanded=False):
         col1, col2 = st.columns(2)
@@ -831,13 +837,13 @@ def render_bibliometria_docente():
         with col2:
             filtro_tipos = st.multiselect("Tipo de documento", tipos_disponiveis, key="biblio_f_tipos")
     
-    df_filtrado = df_biblio.copy()
+    df_filtrado = df_documentos_scopus.copy()
     if filtro_anos:
         df_filtrado = df_filtrado[df_filtrado["ano"].isin(filtro_anos)]
     if filtro_tipos:
         df_filtrado = df_filtrado[df_filtrado["tipo_documento"].isin(filtro_tipos)]
     
-    df_quadrienio = df_biblio[df_biblio["ano"].astype(str).isin(ANOS)]
+    df_quadrienio = df_documentos_scopus[df_documentos_scopus["ano"].astype(str).isin(ANOS)]
     total_docs = len(df_filtrado)
     citacoes_usam_relatorio = not citacoes_anuais_relatorio.empty
     total_citacoes = int(citacoes_anuais_relatorio.sum()) if citacoes_usam_relatorio else (int(df_filtrado["citacoes"].sum()) if total_docs else 0)
@@ -851,8 +857,9 @@ def render_bibliometria_docente():
     
     st.markdown(f"### {docente_nome}")
     st.caption(
-        "Painel de visualização da produtividade do docente. Quando houver relatório do tipo GSouza.csv, "
-        "a evolução das citações usa as citações recebidas em cada ano desse relatório; a produção anual usa a exportação de documentos da Scopus."
+        "Painel de visualização da produtividade do docente. Quando houver relatório do tipo *_CV.csv, "
+        "a evolução das citações usa as citações recebidas em cada ano desse relatório. "
+        "O número de documentos e a produção anual são calculados exclusivamente a partir do arquivo no modelo *_scopus.csv."
     )
     
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -2257,4 +2264,3 @@ elif st.session_state.page == "private":
                         linhas.append({"Ano": p["ano"], "Tipo": p["tipo"], "Título": p["titulo"]})
                 if linhas: st.dataframe(pd.DataFrame(linhas), width="stretch")
         else: st.info("Sem participações.")
-
