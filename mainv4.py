@@ -30,7 +30,7 @@ st.set_page_config(
 
 try:
     banner = Image.open("banner_ppg.png")
-    st.image(banner, use_container_width=True)
+    st.image(banner, width="stretch")
 except Exception:
     pass
 
@@ -235,30 +235,12 @@ def exibir_video_entrada():
         if video_file.exists():
             try:
                 video_bytes = video_file.read_bytes()
-                b64_video = base64.b64encode(video_bytes).decode()
-                
-                video_html = f"""
-                <video autoplay loop muted playsinline controls
-                       style="width: 100%; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
-                    <source src="data:video/mp4;base64,{b64_video}" type="video/mp4">
-                    Seu navegador não suporta o elemento de vídeo.
-                </video>
-                """
-                components.html(video_html, height=450, scrolling=False)
+                st.video(video_bytes, format="video/mp4", autoplay=True, loop=True, muted=True, width="stretch")
             except Exception as e:
                 st.warning(f"Erro ao carregar vídeo: {e}")
-                st.video(str(video_file), autoplay=True)
+                st.video(str(video_file), autoplay=True, width="stretch")
         else:
-            iframe_html = f"""
-            <iframe src="{onedrive_url}" 
-                    width="100%" 
-                    height="450" 
-                    frameborder="0" 
-                    allowfullscreen
-                    style="border-radius: 12px; border: none;">
-            </iframe>
-            """
-            components.html(iframe_html, height=450, scrolling=False)
+            st.iframe(onedrive_url, height=450, width="stretch")
 
 # ---------------------------------------------------------
 # E-MAIL & PASSWORD HASH
@@ -358,7 +340,7 @@ def ensure_header(ws_obj, headers):
             for i, col in enumerate(colunas_faltantes):
                 ws_obj.update_cell(1, ultima_coluna + i + 1, col)
         else:
-            ws_obj.update("1:1", [headers])
+            ws_obj.update(values=[headers], range_name="1:1")
     except APIError:
         pass
 
@@ -905,7 +887,7 @@ def render_bibliometria_docente():
     
     colunas_tabela = ["ano", "titulo", "periodico", "citacoes", "tipo_documento", "doi", "autores"]
     df_tabela = df_filtrado[colunas_tabela].sort_values(["ano", "citacoes"], ascending=[False, False])
-    st.dataframe(df_tabela, use_container_width=True, hide_index=True)
+    st.dataframe(df_tabela, width="stretch", hide_index=True)
 
 # ---------------------------------------------------------
 # FUNÇÕES DE CO-AUTORIA
@@ -1307,13 +1289,13 @@ with st.sidebar:
         st.success(f"👤 {st.session_state.user.get('name', '')}")
         st.caption(f"Perfil: {role_of(st.session_state.user)}")
         
-        if st.button("🌐 Página Pública", use_container_width=True, key="btn_public_sidebar"):
+        if st.button("🌐 Página Pública", width="stretch", key="btn_public_sidebar"):
             st.session_state.page = "public"; st.rerun()
-        if st.button("🔒 Área Restrita", use_container_width=True, key="btn_private_sidebar"):
+        if st.button("🔒 Área Restrita", width="stretch", key="btn_private_sidebar"):
             st.session_state.page = "private"; st.rerun()
         
         st.divider()
-        if st.button("🚪 Sair", use_container_width=True, key="btn_logout_sidebar"):
+        if st.button("🚪 Sair", width="stretch", key="btn_logout_sidebar"):
             st.session_state.logged = False
             st.session_state.user = {}
             st.session_state.page = "public"
@@ -1321,7 +1303,7 @@ with st.sidebar:
     else:
         st.info("🔓 Área Pública")
         st.caption("Visualize as produções e estatísticas")
-        if st.button("🔑 Login", use_container_width=True, key="btn_login_sidebar"):
+        if st.button("🔑 Login", width="stretch", key="btn_login_sidebar"):
             st.session_state.page = "login"; st.rerun()
 
 # =========================================================
@@ -1491,7 +1473,7 @@ if st.session_state.page == "public":
             'Com Estrangeiros': [stats['producoes_com_estrangeiros_por_ano'].get(ano, 0) for ano in ANOS],
             'Orientações iniciadas': [stats['orient_por_ano'].get(ano, 0) for ano in ANOS],
         })
-        st.dataframe(df_resumo, use_container_width=True)
+        st.dataframe(df_resumo, width="stretch")
         st.divider()
 
         st.subheader("☁️ Nuvem de Palavras dos Títulos")
@@ -1573,7 +1555,7 @@ if st.session_state.page == "public":
                             parts = df_part[df_part["producao_id"] == row["id"]] if not df_part.empty else pd.DataFrame()
                             if not parts.empty:
                                 st.write("**Participações:**")
-                                st.dataframe(parts[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
+                                st.dataframe(parts[["tipo_participacao","nome_participante","vinculo"]], width="stretch")
                                 if any(parts["tipo_participacao"] == "Discente do PPG"):
                                     st.success("✅ Conta com participação de discente(s) do PPG")
                                 if any(parts["tipo_participacao"] == "Pesquisador estrangeiro"):
@@ -1708,7 +1690,7 @@ elif st.session_state.page == "login":
         st.markdown("<div class='block-card'>", unsafe_allow_html=True)
         u = st.text_input("Usuário", key="login_user")
         p = st.text_input("Senha", type="password", key="login_pass")
-        if st.button("Entrar", use_container_width=True, key="btn_login_main"):
+        if st.button("Entrar", width="stretch", key="btn_login_main"):
             ok, res = authenticate(u, p)
             if ok:
                 st.session_state.logged = True
@@ -1733,7 +1715,7 @@ elif st.session_state.page == "login":
             else: orientador = st.text_input("Nome do orientador", key="cad_orientador_txt")
         pw1 = st.text_input("Senha", type="password", key="cad_pw1")
         pw2 = st.text_input("Confirmar senha", type="password", key="cad_pw2")
-        if st.button("Solicitar cadastro", use_container_width=True, key="btn_cadastro"):
+        if st.button("Solicitar cadastro", width="stretch", key="btn_cadastro"):
             if not all([name, username, email]): st.error("Preencha nome, username e email.")
             elif len(pw1) < 6: st.error("Senha com no mínimo 6 caracteres.")
             elif pw1 != pw2: st.error("Senhas não coincidem.")
@@ -1779,33 +1761,33 @@ elif st.session_state.page == "private":
             if df_users.empty: st.info("Sem usuários.")
             else:
                 cols = [c for c in ["username","name","email","role","orientador","created_at"] if c in df_users.columns]
-                st.dataframe(df_users[cols], use_container_width=True)
+                st.dataframe(df_users[cols], width="stretch")
 
         with t2:
             pend = df_cad[df_cad.get("status","") == "Pendente"] if not df_cad.empty else pd.DataFrame()
             if pend.empty: st.info("Sem cadastros pendentes.")
             else:
                 cols = [c for c in ["id","name","username","email","role","orientador","created_at"] if c in pend.columns]
-                st.dataframe(pend[cols], use_container_width=True)
+                st.dataframe(pend[cols], width="stretch")
                 sel_id = st.selectbox("Selecione um cadastro", pend["id"].tolist(), key="admin_sel_cad")
                 reason = st.text_input("Motivo (opcional)", key="admin_reason_cad")
                 cA, cR = st.columns(2)
                 with cA:
-                    if st.button("✅ Aprovar", use_container_width=True, key="btn_aprovar_cad"):
+                    if st.button("✅ Aprovar", width="stretch", key="btn_aprovar_cad"):
                         ok, msg = cadastro_review(sel_id, "Aprovar", user["username"], reason)
                         (st.success if ok else st.error)(msg); st.rerun()
                 with cR:
-                    if st.button("❌ Rejeitar", use_container_width=True, key="btn_rejeitar_cad"):
+                    if st.button("❌ Rejeitar", width="stretch", key="btn_rejeitar_cad"):
                         ok, msg = cadastro_review(sel_id, "Rejeitar", user["username"], reason)
                         (st.success if ok else st.error)(msg); st.rerun()
 
         with t3:
             if df_prod.empty: st.info("Sem produções cadastradas.")
             else:
-                st.dataframe(df_prod, use_container_width=True)
+                st.dataframe(df_prod, width="stretch")
                 st.caption("Total de produções: " + str(len(df_prod)))
                 if not df_part.empty:
-                    st.write("**Participações registradas:**"); st.dataframe(df_part, use_container_width=True)
+                    st.write("**Participações registradas:**"); st.dataframe(df_part, width="stretch")
 
         with t4:
             if df_prod.empty: st.info("Sem produções.")
@@ -1819,12 +1801,12 @@ elif st.session_state.page == "private":
                         if not df_part.empty:
                             ids_ano = subset["id"].tolist()
                             parts_ano = df_part[df_part["producao_id"].isin(ids_ano)]
-                            if not parts_ano.empty: st.dataframe(parts_ano["tipo_participacao"].value_counts(), use_container_width=True)
+                            if not parts_ano.empty: st.dataframe(parts_ano["tipo_participacao"].value_counts(), width="stretch")
 
         with t5:
             hist = df_cad[df_cad.get("status","").isin(["Aprovado","Rejeitado"])] if not df_cad.empty else pd.DataFrame()
             if hist.empty: st.info("Sem histórico.")
-            else: st.dataframe(hist, use_container_width=True)
+            else: st.dataframe(hist, width="stretch")
 
         with t6:
             st.subheader("➕ Cadastrar nova produção para um docente")
@@ -1859,7 +1841,7 @@ elif st.session_state.page == "private":
                     
                     discente_primeiro_str, docente_ultimo_str = renderizar_checkboxes_autoria("admin_cad")
                     
-                    submitted = st.form_submit_button("💾 Cadastrar", use_container_width=True)
+                    submitted = st.form_submit_button("💾 Cadastrar", width="stretch")
                     if submitted:
                         if not titulo.strip(): st.error("Título é obrigatório.")
                         else:
@@ -1893,7 +1875,7 @@ elif st.session_state.page == "private":
                         ano_conclusao = st.text_input("Ano de saída (se aplicável)", 
                                                        placeholder="Ex: 2025 ou vazio", key="ori_ano_conc")
                     
-                    submitted = st.form_submit_button("💾 Cadastrar orientação", use_container_width=True)
+                    submitted = st.form_submit_button("💾 Cadastrar orientação", width="stretch")
                     if submitted:
                         if not discente_nome.strip() or not ano_inicio.strip():
                             st.error("Nome do orientando e ano de entrada são obrigatórios.")
@@ -1920,7 +1902,7 @@ elif st.session_state.page == "private":
                                 st.markdown(badge_status(row['status']), unsafe_allow_html=True)
                                 st.write(f"**Ano de entrada:** {row['ano_inicio']}")
                                 st.write(f"**Ano de saída:** {row['ano_conclusao'] or '—'}")
-                                if st.button("🗑️ Excluir", key=f"del_ori_{row['id']}", use_container_width=True):
+                                if st.button("🗑️ Excluir", key=f"del_ori_{row['id']}", width="stretch"):
                                     ok, msg = orientacao_delete(row['id'])
                                     if ok: st.success(msg); st.rerun()
                                     else: st.error(msg)
@@ -1950,7 +1932,7 @@ elif st.session_state.page == "private":
                         nivel = st.selectbox("Nível", NIVEIS_ENSINO, key="ens_nivel")
                     descricao = st.text_area("Descrição (opcional)", height=80, key="ens_desc")
                     
-                    submitted = st.form_submit_button("💾 Cadastrar atividade", use_container_width=True)
+                    submitted = st.form_submit_button("💾 Cadastrar atividade", width="stretch")
                     if submitted:
                         if not titulo.strip():
                             st.error("Título é obrigatório.")
@@ -1982,7 +1964,7 @@ elif st.session_state.page == "private":
                                         if desc:
                                             st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{desc}</div>', 
                                                        unsafe_allow_html=True)
-                                        if st.button("🗑️ Excluir", key=f"del_ens_{row['id']}", use_container_width=True):
+                                        if st.button("🗑️ Excluir", key=f"del_ens_{row['id']}", width="stretch"):
                                             ok, msg = ensino_delete(row['id'])
                                             if ok: st.success(msg); st.rerun()
                                             else: st.error(msg)
@@ -2011,7 +1993,7 @@ elif st.session_state.page == "private":
                         publico_alvo = st.text_input("Público-alvo", key="imp_publico")
                     descricao = st.text_area("Descrição detalhada", height=100, key="imp_desc")
                     
-                    submitted = st.form_submit_button("💾 Cadastrar atividade", use_container_width=True)
+                    submitted = st.form_submit_button("💾 Cadastrar atividade", width="stretch")
                     if submitted:
                         if not titulo.strip():
                             st.error("Título é obrigatório.")
@@ -2039,7 +2021,7 @@ elif st.session_state.page == "private":
                                 if desc:
                                     st.markdown(f'<div class="descricao-box"><b>📝 Descrição:</b><br>{desc}</div>', 
                                                unsafe_allow_html=True)
-                                if st.button("🗑️ Excluir", key=f"del_imp_{row['id']}", use_container_width=True):
+                                if st.button("🗑️ Excluir", key=f"del_imp_{row['id']}", width="stretch"):
                                     ok, msg = impacto_delete(row['id'])
                                     if ok: st.success(msg); st.rerun()
                                     else: st.error(msg)
@@ -2103,14 +2085,14 @@ elif st.session_state.page == "private":
                             parts = df_part[df_part["producao_id"] == row["id"]] if not df_part.empty else pd.DataFrame()
                             if not parts.empty:
                                 st.write("**Participações:**")
-                                st.dataframe(parts[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
+                                st.dataframe(parts[["tipo_participacao","nome_participante","vinculo"]], width="stretch")
                             if eh_principal:
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if st.button("✏️ Editar", key=f"edit_{row['id']}", use_container_width=True):
+                                    if st.button("✏️ Editar", key=f"edit_{row['id']}", width="stretch"):
                                         st.session_state['editing_prod_id'] = row['id']; st.rerun()
                                 with col2:
-                                    if st.button("🗑️ Excluir", key=f"del_{row['id']}", use_container_width=True):
+                                    if st.button("🗑️ Excluir", key=f"del_{row['id']}", width="stretch"):
                                         st.session_state['deleting_prod_id'] = row['id']; st.rerun()
                             else:
                                 st.info("💡 Co-autores podem visualizar, mas não editar/excluir esta produção.")
@@ -2171,7 +2153,7 @@ elif st.session_state.page == "private":
                     st.subheader("👥 Participações")
                     parts_current = df_part[df_part["producao_id"] == pid] if not df_part.empty else pd.DataFrame()
                     if not parts_current.empty:
-                        st.dataframe(parts_current[["tipo_participacao","nome_participante","vinculo"]], use_container_width=True)
+                        st.dataframe(parts_current[["tipo_participacao","nome_participante","vinculo"]], width="stretch")
                     c3, c4 = st.columns(2)
                     with c3: tipo_p = st.selectbox("Tipo", TIPOS_PARTICIPACAO, key=f"part_tipo_{pid}")
                     with c4: nome_p = st.text_input("Nome", key=f"part_nome_{pid}")
@@ -2179,17 +2161,17 @@ elif st.session_state.page == "private":
                     
                     c_save1, c_save2, c_cancel = st.columns([1, 1, 1])
                     with c_save1:
-                        if st.form_submit_button("➕ Add participação", use_container_width=True):
+                        if st.form_submit_button("➕ Add participação", width="stretch"):
                             if nome_p.strip(): participacao_submit(pid, tipo_p, nome_p, vinc); st.success("Adicionado!"); st.rerun()
                     with c_save2:
-                        if st.form_submit_button("💾 Salvar", use_container_width=True):
+                        if st.form_submit_button("💾 Salvar", width="stretch"):
                             if titulo.strip():
                                 ok, msg = producao_update(pid, titulo, tipo, ano, veiculo, 
                                                          autores, doi, descricao, co_autores_usernames,
                                                          discente_primeiro_str, docente_ultimo_str)
                                 if ok: st.session_state.pop('editing_prod_id', None); st.success(msg); st.rerun()
                     with c_cancel:
-                        if st.form_submit_button("❌ Cancelar", use_container_width=True):
+                        if st.form_submit_button("❌ Cancelar", width="stretch"):
                             st.session_state.pop('editing_prod_id', None); st.rerun()
             st.divider()
 
@@ -2202,11 +2184,11 @@ elif st.session_state.page == "private":
                 st.warning("⚠️ Esta ação não pode ser desfeita!")
                 c1, c2 = st.columns(2)
                 with c1:
-                    if st.button("Sim, excluir", type="primary", use_container_width=True, key=f"btn_confirm_del_{pid}"):
+                    if st.button("Sim, excluir", type="primary", width="stretch", key=f"btn_confirm_del_{pid}"):
                         ok, msg = producao_delete(pid)
                         if ok: st.session_state.pop('deleting_prod_id', None); st.success(msg); st.rerun()
                 with c2:
-                    if st.button("Cancelar", use_container_width=True, key=f"btn_cancel_del_{pid}"):
+                    if st.button("Cancelar", width="stretch", key=f"btn_cancel_del_{pid}"):
                         st.session_state.pop('deleting_prod_id', None); st.rerun()
             st.divider()
 
@@ -2252,5 +2234,6 @@ elif st.session_state.page == "private":
                     if not prod.empty:
                         p = prod.iloc[0]
                         linhas.append({"Ano": p["ano"], "Tipo": p["tipo"], "Título": p["titulo"]})
-                if linhas: st.dataframe(pd.DataFrame(linhas), use_container_width=True)
+                if linhas: st.dataframe(pd.DataFrame(linhas), width="stretch")
         else: st.info("Sem participações.")
+
