@@ -493,7 +493,8 @@ DOCENTES_BIBLIOMETRIA = {
     "Anderson Manoel Herculano Oliveira da Silva": [
         "AHerculano_CV.csv",
         "AHerculano_scopus.csv",
-    ]"Givago da Silva Souza": [
+    ],
+    "Givago da Silva Souza": [
         "GSouza_CV.csv",
         "GSouza_scopus.csv",
     ],
