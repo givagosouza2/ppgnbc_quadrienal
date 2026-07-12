@@ -763,14 +763,14 @@ def render_bibliometria_docente():
     docente_nome = st.selectbox("Docente", docentes, key="biblio_docente_select")
     arquivos = carregar_arquivos_docente_bibliometria(docente_nome)
     
-    with st.expander("📎 Arquivos associados", expanded=True):
-        if arquivos:
-            st.write(f"**{docente_nome}**")
-            st.caption("Arquivos carregados automaticamente para este docente:")
-            for arquivo in arquivos:
-                st.write(f"• {arquivo.name}")
-        else:
-            st.warning("Nenhum arquivo associado foi encontrado para este docente.")
+    #with st.expander("📎 Arquivos associados", expanded=True):
+    #    if arquivos:
+    #        st.write(f"**{docente_nome}**")
+    #       st.caption("Arquivos carregados automaticamente para este docente:")
+    #        for arquivo in arquivos:
+    #            st.write(f"• {arquivo.name}")
+    #    else:
+    #        st.warning("Nenhum arquivo associado foi encontrado para este docente.")
         
         #arquivos_extra = st.file_uploader(
         #    "Adicionar CSVs temporários para visualização",
@@ -782,26 +782,26 @@ def render_bibliometria_docente():
         #if arquivos_extra:
         #    arquivos.extend(arquivos_extra)
     
-    if not arquivos:
-        st.info("Associe arquivos CSV da Scopus ao docente para visualizar a produtividade bibliométrica.")
-        return
+    #if not arquivos:
+    #    st.info("Associe arquivos CSV da Scopus ao docente para visualizar a produtividade bibliométrica.")
+    #    return
     
-    try:
-        citacoes_anuais_relatorio = obter_citacoes_anuais_de_relatorios(arquivos)
-        df_biblio, metricas_relatorio = consolidar_arquivos_bibliometricos(arquivos)
-    except Exception as e:
-        st.error(f"Não foi possível ler os arquivos associados: {e}")
-        return
+    #try:
+    #    citacoes_anuais_relatorio = obter_citacoes_anuais_de_relatorios(arquivos)
+    #    df_biblio, metricas_relatorio = consolidar_arquivos_bibliometricos(arquivos)
+    #except Exception as e:
+    #    st.error(f"Não foi possível ler os arquivos associados: {e}")
+    #    return
     
-    if df_biblio.empty:
-        st.warning("Os arquivos associados não contêm uma tabela de documentos reconhecida.")
-        if metricas_relatorio:
-            st.write("Indicadores extraídos:")
-            st.json(metricas_relatorio)
-        return
+    #if df_biblio.empty:
+    #    st.warning("Os arquivos associados não contêm uma tabela de documentos reconhecida.")
+    #    if metricas_relatorio:
+    #        st.write("Indicadores extraídos:")
+    #        st.json(metricas_relatorio)
+    #    return
     
-    anos_disponiveis = sorted([int(a) for a in df_biblio["ano"].dropna().unique() if int(a) > 0], reverse=True)
-    tipos_disponiveis = sorted([t for t in df_biblio["tipo_documento"].dropna().unique() if str(t).strip()])
+    #anos_disponiveis = sorted([int(a) for a in df_biblio["ano"].dropna().unique() if int(a) > 0], reverse=True)
+    #tipos_disponiveis = sorted([t for t in df_biblio["tipo_documento"].dropna().unique() if str(t).strip()])
     
     with st.expander("🔎 Filtros de visualização", expanded=False):
         col1, col2 = st.columns(2)
