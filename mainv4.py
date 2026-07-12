@@ -803,20 +803,46 @@ def render_bibliometria_docente():
     
     anos_disponiveis = sorted([int(a) for a in df_biblio["ano"].dropna().unique() if int(a) > 0], reverse=True)
     tipos_disponiveis = sorted([t for t in df_biblio["tipo_documento"].dropna().unique() if str(t).strip()])
-        
+
+    with st.expander("🔎 Filtros de visualização", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            filtro_anos = st.multiselect("Ano de publicação", anos_disponiveis, default=anos_disponiveis, key="biblio_f_anos")
+        with col2:
+            filtro_tipos = st.multiselect("Tipo de documento", tipos_disponiveis, key="biblio_f_tipos")
+    
+    df_filtrado = df_biblio.copy()
+    if filtro_anos:
+        df_filtrado = df_filtrado[df_filtrado["ano"].isin(filtro_anos)]
+    if filtro_tipos:
+        df_filtrado = df_filtrado[df_filtrado["tipo_documento"].isin(filtro_tipos)]
+    
+    df_quadrienio = df_biblio[df_biblio["ano"].astype(str).isin(ANOS)]
+    total_docs = len(df_filtrado)
+    citacoes_usam_relatorio = not citacoes_anuais_relatorio.empty
+    total_citacoes = int(citacoes_anuais_relatorio.sum()) if citacoes_usam_relatorio else (int(df_filtrado["citacoes"].sum()) if total_docs else 0)
+    h_index_calculado = calcular_h_index(df_filtrado["citacoes"]) if total_docs else 0
+    media_citacoes = (total_citacoes / total_docs) if total_docs else 0
+    docs_quadrienio = len(df_quadrienio)
+    taxa_oa = (
+        df_filtrado["acesso_aberto"].astype(str).str.strip().ne("").mean() * 100
+        if total_docs else 0
+    )
+
+    
     st.markdown(f"### {docente_nome}")
     st.caption(
         "Painel de visualização da produtividade do docente. Quando houver relatório do tipo GSouza.csv, "
         "a evolução das citações usa as citações recebidas em cada ano desse relatório; a produção anual usa a exportação de documentos da Scopus."
     )
     
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1: render_metric_card(total_docs, "Documentos")
     with c2: render_metric_card(total_citacoes, "Citações", "metric-card-blue")
     with c3: render_metric_card(h_index_calculado, "h-index calculado", "metric-card-green")
     with c4: render_metric_card(f"{media_citacoes:.1f}", "Citações/doc.", "metric-card-orange")
     with c5: render_metric_card(docs_quadrienio, "Docs. 2025-2028", "metric-card-pink")
-    with c6: render_metric_card(f"{taxa_oa:.0f}%", "Open Access", "metric-card-blue")
+    
     
     if citacoes_usam_relatorio:
         st.success("Fonte das citações anuais: relatório de citações da Scopus associado ao docente.")
